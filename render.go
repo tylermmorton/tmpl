@@ -1,23 +1,11 @@
 package tmpl
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"html/template"
 	"io"
 )
-
-type Template[T TemplateProvider] interface {
-	Render(w io.Writer, data T, opts ...RenderOption) error
-}
-
-type renderer[T TemplateProvider] struct {
-	ctx      context.Context
-	template *template.Template
-}
-
-var _ Template[TemplateProvider] = (*renderer[TemplateProvider])(nil)
 
 type RenderProcess struct {
 	Target   string
@@ -49,8 +37,10 @@ func WithFuncs(funcs template.FuncMap) RenderOption {
 	}
 }
 
-func (r *renderer[T]) Render(wr io.Writer, data T, opts ...RenderOption) error {
-	t, err := r.template.Clone()
+func (tmpl *tmpl[T]) Render(wr io.Writer, data T, opts ...RenderOption) error {
+	tmpl.mu.RLock()
+	t, err := tmpl.template.Clone()
+	tmpl.mu.RUnlock()
 	if err != nil {
 		return err
 	}
