@@ -254,10 +254,3 @@ Here is an example of what gets generated. This has no effect on your template o
 <html lang="en">
 ...
 ```
-
-## 🚀 GoLand Setup
-If you're using IntelliJ's GoLand IDE, there's a few powerful features you can use to supercharge your templating workflow. This section outlines some suggested configuration changes you can make:
-
-
-## Philosophy
-Go offers an extremely powerful and versatile templating package as a part of its standard library. One can write anything from HTML based templates to new Go code generators and everything in between. 
