@@ -1,6 +1,8 @@
-package bind
+package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -9,7 +11,16 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"text/template"
+)
+
+var (
+	//go:embed templates/fileprovider.tmpl.go
+	fileProviderTmplText string
+	//go:embed templates/textprovider.tmpl.go
+	textProviderTmplText string
 )
 
 const (
@@ -19,8 +30,22 @@ const (
 	BinderTypeEmbed string = "embed"
 )
 
-type Config struct {
+type TemplateBinding struct {
 	BinderType string
+	FileName   string
+	FilePath   string
+	StructType string
+	UseWatcher bool
+}
+
+func (b *TemplateBinding) TemplateText() string {
+	if b.BinderType == BinderTypeEmbed {
+		return textProviderTmplText
+	} else if b.BinderType == BinderTypeFile {
+		return fileProviderTmplText
+	} else {
+		panic(fmt.Sprintf("unknown binder type: %s", b.BinderType))
+	}
 }
 
 func main() {
@@ -30,11 +55,6 @@ func main() {
 	}
 
 	log.Printf("Binding templates in %s", cwd)
-
-	t, ok := os.LookupEnv("TMPL_BIND_TYPE")
-	if !ok {
-		t = BinderTypeEmbed
-	}
 
 	entries, err := os.ReadDir(cwd)
 	if err != nil {
@@ -64,52 +84,48 @@ func main() {
 		return
 	}
 
-	b := strings.Builder{}
+	imports := make(map[string]string, 0)
+	for _, binding := range bindings {
+		switch binding.BinderType {
+		case BinderTypeEmbed:
+			imports["embed"] = "_"
+		case BinderTypeFile:
+			imports["os"] = ""
+			imports["github.com/fsnotify/fsnotify"] = ""
+		}
+	}
+
+	b := bytes.Buffer{}
 	b.WriteString(fmt.Sprintf("package %s\n", filepath.Base(cwd)))
 
-	switch t {
-	case BinderTypeEmbed:
-		// ikr... the tmpl lib isn't using a template???
-		// TODO: replace this with a proper template
-		b.WriteString("import (\n")
-		b.WriteString("\t_ \"embed\"\n")
-		b.WriteString(")\n")
+	b.WriteString("import (\n")
+	for k, alias := range imports {
+		b.WriteString(fmt.Sprintf("\t%s \"%s\"\n", alias, k))
+	}
+	b.WriteString(")\n")
 
-		b.WriteString("var (\n")
-		for _, binding := range bindings {
-			b.WriteString(fmt.Sprintf("//go:embed %s\n", binding.FileName))
-			b.WriteString(fmt.Sprintf("%sTmplText string\n", toCamelCase(binding.StructType)))
+	for _, binding := range bindings {
+		log.Printf("Generating binder for %s", binding.FileName)
+		log.Printf("Binder type is %s", binding.BinderType)
+		t, err := template.New("binder").Parse(binding.TemplateText())
+		if err != nil {
+			log.Fatalf("failed to parse binder template: %v", err)
 		}
-		b.WriteString(")\n\n")
-
-		for _, binding := range bindings {
-			// TODO: add doc comments to the generated code
-			b.WriteString(fmt.Sprintf("func (*%s) TemplateText() string {\n", binding.StructType))
-			b.WriteString(fmt.Sprintf("\treturn %sTmplText\n", toCamelCase(binding.StructType)))
-			b.WriteString("}\n\n")
+		t.Funcs(template.FuncMap{
+			"toCamelCase": toCamelCase,
+		})
+		err = t.Execute(&b, &binding)
+		if err != nil {
+			log.Fatalf("failed to render binder template: %v", err)
 		}
-	case BinderTypeFile:
-		b.WriteString("import (\n")
-		b.WriteString("\t\"os\"\n")
-		b.WriteString(")\n")
-
-		for _, binding := range bindings {
-			// TODO: add doc comments to the generated code
-			b.WriteString(fmt.Sprintf("func (*%s) TemplateText() string {\n", binding.StructType))
-			b.WriteString(fmt.Sprintf(`byt, err := os.ReadFile("%s")
-				if err != nil {
-					panic(err)
-				}
-				return string(byt)
-			`, binding.FilePath))
-			b.WriteString("}\n\n")
-		}
-
 	}
 
 	src, err := format.Source([]byte(b.String()))
 	if err != nil {
+		log.Printf(b.String() + "\n\n")
+
 		log.Fatalf("could not format tmpl.bind.go: %v", err)
+
 	}
 
 	err = os.WriteFile("tmpl.bind.go", src, 0644)
@@ -118,14 +134,12 @@ func main() {
 	}
 }
 
-type TemplateBinding struct {
-	FileName string
-	FilePath string
-
-	StructType string
-}
-
 func analyzeGoFile(goFile string) []TemplateBinding {
+	t, ok := os.LookupEnv("TMPL_BIND_TYPE")
+	if !ok {
+		t = BinderTypeFile
+	}
+
 	res := make([]TemplateBinding, 0)
 	byt, err := os.ReadFile(goFile)
 	if os.IsNotExist(err) || (byt != nil && len(byt) == 0) {
@@ -133,7 +147,7 @@ func analyzeGoFile(goFile string) []TemplateBinding {
 	} else if err != nil {
 		panic(err)
 	} else {
-		// Read the goFile and convert it to AST
+		// Read the Go File and convert it to AST
 		fset := token.NewFileSet()
 		f, err := parser.ParseFile(fset, "", string(byt), parser.ParseComments)
 		if err != nil {
@@ -159,16 +173,33 @@ func analyzeGoFile(goFile string) []TemplateBinding {
 						if strings.HasPrefix(comment.Text, "//tmpl:bind") {
 							if ts, ok := decl.Specs[0].(*ast.TypeSpec); ok {
 								s := strings.Split(comment.Text, " ")
-								if len(s) > 2 {
-									panic("tmpl:bind can only have one argument")
-								}
-
-								res = append(res, TemplateBinding{
+								b := TemplateBinding{
 									FileName:   s[1],
 									FilePath:   filepath.Join(filepath.Dir(goFile), s[1]),
 									StructType: ts.Name.Name,
-								})
+									BinderType: t,
+								}
 
+								for _, flag := range s[2:] {
+									if strings.Contains(flag, "=") {
+										f := strings.Split(flag, "=")[0]
+										v := strings.Split(flag, "=")[1]
+
+										switch f {
+										case "watch":
+											w, err := strconv.ParseBool(v)
+											if err != nil {
+												panic(fmt.Sprintf("failed to parse --watch value `%s` for %s", v, b.StructType))
+											}
+											b.UseWatcher = w
+										}
+									}
+									if flag == "--watch" {
+										b.UseWatcher = true
+									}
+								}
+
+								res = append(res, b)
 								break
 							}
 						}

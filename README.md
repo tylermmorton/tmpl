@@ -1,12 +1,12 @@
 # `tmpl`
 
-tmpl is a wrapper around Go's template engine that improves the overall workflow and offers a few helpful utilities:
+tmpl is a wrapper around Go's `html/template` package that improves the overall workflow and offers a few helpful utilities for developers building html based applications:
 - Compile-time type safety 
-- Nested templates
-- Managed template files: Load from disk in development with hot reload, embed in binary for production
+- Nested templates and template fragments
+- Managed template files: Load from disk in development with hot reloading, embed in binary for production
+- Scaffolding CLI for binding templates to Go code
 - Template extensibility through compiler plugins
 - Static analysis utilities such as parse tree traversal
-- Scaffolding tools for embedding templates in Go code
 
 ##  🧰 Installation
 ```bash
