@@ -1,5 +1,7 @@
 # `tmpl`
 
+> ⚠️ `tmpl` is currently experimental.
+
 tmpl is a wrapper around Go's `html/template` package that improves the overall workflow and offers a few helpful utilities for developers building html based applications:
 - Compile-time type safety 
 - Nested templates and template fragments
@@ -42,14 +44,18 @@ Start by creating a template. You can use any of the standard Go template syntax
 </body>
 ```
 
-To tie your template to your Go code, declare a struct that represents the 'dot context' of your template. If you're using the scaffold utility, annotate your struct with the `tmpl:bind` declaration. 
+To bind your template to your Go code, declare a "template struct" that represents the "dot context" of the template. 
+
+Any struct fields or methods attached via pointer receiver will be available for use in your template. 
+
+If you're using the scaffold utility, annotate your struct with the `tmpl:bind` declaration. 
 
 ```go
 package main 
 
 //go:generate tmpl bind -o tmpl.gen.go
 
-//tmpl:bind login.tmpl.html
+//tmpl:bind login.tmpl.html --watch
 type LoginPage struct {
     Title     string
     Username  string
@@ -99,7 +105,7 @@ type LoginPage struct {
 // Compile your templates when the program initializes
 var (
     // LoginTemplate can be used to render login.tmpl.html
-    LoginTemplate = tmpl.Compile(LoginPage{})
+    LoginTemplate = tmpl.MustCompile(&LoginPage{})
 )
 
 func main() {
@@ -117,7 +123,9 @@ func main() {
 }
 ```
 
-To be fair, this is a lot of work to render one template. The real power of `tmpl` comes from the ability to nest templates and use them in multiple places. Let's abstract the document `<head>` of our Login page into a separate template to be reused by other pages:
+To be fair, this is a lot of work to render a single template, but we're just getting started. One of the core features of `tmpl` is the  ability to nest templates and use them in multiple places. 
+
+Let's abstract the document `<head>` of our Login page into a separate template that can be reused by other pages:
 
 ```html
 <head>
@@ -139,7 +147,9 @@ type Head struct {
 }
 ```
 
-Nesting templates in Go is as easy as embedding one template struct in another:
+To nest a template in Go code its as easy as embedding one template struct into another:
+
+When you compile a template struct, the compiler will recursively compile all the fields that are also template structs into the final template instance.
 
 ```go
 package main
@@ -160,6 +170,8 @@ type LoginPage struct {
 
 Now update your login page template to use the new template named `head`:
 
+You can reference nested templates by using the built-in `template` directive. The name of the template is defined using the `tmpl` struct tag.
+
 ```html
 <!DOCTYPE html>
 <html lang="en">
@@ -170,7 +182,7 @@ Now update your login page template to use the new template named `head`:
 </html>
 ```
 
-When you call `tmpl.Compile` on a template struct, it will recursively compile all the nested templates. You can then render the top-level template and all of its nested templates will be rendered as well, as long as they are referenced by the Go template's native `template` directive. Here is the updated code:
+Here is the updated Go code:
 
 ```go
 package main
@@ -200,7 +212,7 @@ type LoginPage struct {
 // Compile your templates when the program initializes
 var (
     // LoginTemplate can be used to render login.tmpl.html
-    LoginTemplate = tmpl.Compile(LoginPage{})
+    LoginTemplate = tmpl.MustCompile(LoginPage{})
 )
 
 func main() {
