@@ -91,7 +91,9 @@ func main() {
 			imports["embed"] = "_"
 		case BinderTypeFile:
 			imports["os"] = ""
-			imports["github.com/fsnotify/fsnotify"] = ""
+			if binding.UseWatcher {
+				imports["github.com/fsnotify/fsnotify"] = ""
+			}
 		}
 	}
 

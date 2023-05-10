@@ -116,7 +116,7 @@ func Compile[T TemplateProvider](p T) (Template[T], error) {
 	}
 
 	if w, ok := reflect.ValueOf(p).Interface().(Watcher); ok {
-		c.spawnWatcherRoutine(w)
+		go c.spawnWatcherRoutine(w)
 	}
 
 	return c, nil
