@@ -61,15 +61,48 @@ func (tmpl *tmpl[T]) compileNested(t *template.Template, val reflect.Value) (*te
 			name = val.Type().Field(i).Name
 		}
 
-		if tp, ok := val.Field(i).Interface().(TemplateProvider); ok {
-			err := doCompile(t, name, tp)
-			if err != nil {
-				return nil, err
+		field := val.Field(i)
+		if field.Kind() == reflect.Slice {
+			if field.Type().Elem().Kind() == reflect.Ptr {
+				el := reflect.New(field.Type().Elem().Elem())
+
+				if tp, ok := el.Interface().(TemplateProvider); ok {
+					err := doCompile(t, name, tp)
+					if err != nil {
+						return nil, err
+					}
+				} else if tp, ok := el.Addr().Interface().(TemplateProvider); ok {
+					err := doCompile(t, name, tp)
+					if err != nil {
+						return nil, err
+					}
+				}
+			} else {
+				el := reflect.New(field.Type().Elem())
+
+				if tp, ok := el.Interface().(TemplateProvider); ok {
+					err := doCompile(t, name, tp)
+					if err != nil {
+						return nil, err
+					}
+				} else if tp, ok := el.Addr().Interface().(TemplateProvider); ok {
+					err := doCompile(t, name, tp)
+					if err != nil {
+						return nil, err
+					}
+				}
 			}
-		} else if tp, ok := val.Field(i).Addr().Interface().(TemplateProvider); ok {
-			err := doCompile(t, name, tp)
-			if err != nil {
-				return nil, err
+		} else {
+			if tp, ok := field.Interface().(TemplateProvider); ok {
+				err := doCompile(t, name, tp)
+				if err != nil {
+					return nil, err
+				}
+			} else if tp, ok := field.Addr().Interface().(TemplateProvider); ok {
+				err := doCompile(t, name, tp)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

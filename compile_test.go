@@ -2,117 +2,66 @@ package tmpl
 
 import (
 	"bytes"
-	"github.com/fsnotify/fsnotify"
+	_ "embed"
+	"strings"
 	"testing"
 )
 
-type TestTextProvider struct {
+type Component struct {
+	Text string
+}
+
+func (*Component) TemplateText() string {
+	return "{{.Text}}"
+}
+
+//go:embed compile_test.tmpl.html
+var testTemplateText string
+
+type TestTemplate struct {
+	Message Component `tmpl:"message"`
+	// Components tests slices of nested templates
+	Components []Component `tmpl:"component"`
+
 	Name string
 }
 
-func (ct *TestTextProvider) TemplateText() string {
-	return "Hello, {{.Name}}!"
-}
-
-func (ct *TestTextProvider) WatchSignal(signal chan struct{}, ch chan error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		ch <- err
-		return
-	}
-	defer watcher.Close()
-
-	// Recover any panics from reading the file
-	// and pass it along the given error channel
-	defer func(ch chan error) {
-		if err, ok := recover().(error); ok && err != nil {
-			ch <- err
-		}
-	}(ch)
-
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-
-				if event.Has(fsnotify.Write) {
-					signal <- struct{}{}
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-
-				ch <- err
-			}
-		}
-	}()
-
-	// Add a path.
-	err = watcher.Add("/abs/path/app.tmpl.html")
-	if err != nil {
-		ch <- err
-		return
-	}
-
-	// Block goroutine forever so the watcher doesn't get gc'd
-	<-make(chan struct{})
-}
-
-type TestNestedTemplate struct {
-	TestTextProvider `tmpl:"nested"`
-}
-
-func (nt *TestNestedTemplate) TemplateText() string {
-	return `{{ template "nested" . }}`
+func (*TestTemplate) TemplateText() string {
+	return testTemplateText
 }
 
 func Test_Compile(t *testing.T) {
-	testTable := map[string]struct {
-		provider   TemplateProvider
-		expected   string
-		wantErr    bool
-		wantErrMsg string
-	}{
-		"Can compileNested a TextProvider passed by reference": {
-			provider: &TestTextProvider{
-				Name: "World",
-			},
-			expected: "Hello, World!",
-		},
-
-		"Can compileNested a nested TextProvider": {
-			provider: &TestNestedTemplate{
-				TestTextProvider: TestTextProvider{
-					Name: "World",
-				},
-			},
-			expected: "Hello, World!",
-		},
+	tmpl, err := Compile(&TestTemplate{})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	for name, test := range testTable {
-		t.Run(name, func(t *testing.T) {
-			buf := bytes.Buffer{}
-			err := MustCompile(test.provider).Render(&buf, &TestTextProvider{Name: "World"})
-			if err != nil {
-				if !test.wantErr {
-					t.Errorf("Compilation failed: %+v", err)
-				}
-				if test.wantErrMsg != "" && err.Error() != test.wantErrMsg {
-					t.Errorf("Expected error message %q, got %q", test.wantErrMsg, err.Error())
-				}
-			} else {
-				if test.wantErr {
-					t.Errorf("Expected error, got none")
-				}
-			}
-			if buf.String() != test.expected {
-				t.Errorf("Expected %q, got %q", test.expected, buf.String())
-			}
-		})
+	buf := bytes.Buffer{}
+	err = tmpl.Render(&buf, &TestTemplate{
+		Name: "World",
+		Message: Component{
+			Text: "Hello",
+		},
+		Components: []Component{
+			{
+				Text: "Thank you for ",
+			},
+			{
+				Text: "trying out tmpl",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(buf.String(), "Hello World") {
+		t.Logf("output: %s", buf.String())
+		t.Fatal("expected to find 'Hello World' in the output")
+	}
+
+	if !strings.Contains(buf.String(), "Thank you for trying out tmpl") {
+		t.Logf("output: %s", buf.String())
+		t.Fatal("expected to find 'Thank you for trying out tmpl' in the output")
 	}
 }

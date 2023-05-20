@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>This is a test template</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <p>{{template "message" .Message}} {{ .Name }}</p>
+    <p>
+        {{ range .Components -}}
+            {{- template "component" . -}}
+        {{ end -}}
+    </p>
+</body>
+</html>
