@@ -40,13 +40,16 @@ func (p *parser) Parse(t *template.Template, templateName, templateText string, 
 	parser := parse.New(templateName)
 	parser.Mode = parse.SkipFuncCheck | parse.ParseComments
 	treeSet := make(map[string]*parse.Tree)
-	pt, err := parser.Parse(templateText, "{{", "}}", treeSet, nil)
-	if err != nil {
-		return nil, err
-	}
 
 	if t == nil {
 		t = template.New(templateName)
+	} else if t.Tree != nil {
+		treeSet[t.Name()] = t.Tree
+	}
+
+	pt, err := parser.Parse(templateText, "{{", "}}", treeSet, nil)
+	if err != nil {
+		return nil, err
 	}
 
 	for name, tree := range treeSet {
@@ -57,13 +60,13 @@ func (p *parser) Parse(t *template.Template, templateName, templateText string, 
 	// given visitor functions
 	defer func() {
 		if r := recover(); r != nil {
-			switch t := r.(type) {
+			switch typ := r.(type) {
 			case string:
-				err = errors.New(t)
+				err = errors.New(typ)
 			case error:
-				err = t
+				err = typ
 			default:
-				err = fmt.Errorf("recovered panic thrown by visitor during parse.Tree traversal: %v", t)
+				err = fmt.Errorf("recovered panic thrown by visitor during parse.Tree traversal: %v", typ)
 			}
 		}
 	}()

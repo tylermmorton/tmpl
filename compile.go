@@ -4,105 +4,92 @@ import (
 	"context"
 	"fmt"
 	"html/template"
-	"log"
 	"reflect"
+	"strings"
 	"sync"
 )
 
-func (tmpl *tmpl[T]) compile() error {
-	var (
-		err      error
-		name     = fmt.Sprintf("%T", tmpl.p)
-		provider = tmpl.p
-		t        = template.New(name)
-		val      = reflect.ValueOf(provider).Elem()
-	)
-
-	t, err = tmpl.parser.Parse(t, name, provider.TemplateText())
-	if err != nil {
-		return err
-	}
-
-	t, err = tmpl.compileNested(t, val)
-	if err != nil {
-		return err
-	}
-
-	tmpl.mu.Lock()
-	tmpl.template = t
-	tmpl.mu.Unlock()
-
-	return nil
+// compiler is the internal compiler instance
+type compiler struct {
+	ctx    context.Context
+	parser Parser
 }
 
-// compileNested recursively compiles all struct fields who implement TemplateProvider
-// into the given template instance.
-func (tmpl *tmpl[T]) compileNested(t *template.Template, val reflect.Value) (*template.Template, error) {
-	define := func(name string, body string) string {
-		return fmt.Sprintf("{{define %q -}}\n%s{{end}}\n", name, body)
+func wrapTreeDefinition(name string, body string) string {
+	return fmt.Sprintf("{{define %q -}}\n%s{{end}}\n", name, body)
+}
+
+// compile is the template compiler implementation. it orchestrates the entire compilation process.
+func (c *compiler) compile(t *template.Template, templateName string, p TemplateProvider) (*template.Template, error) {
+	var (
+		err          error
+		ok           bool
+		templateText string
+	)
+
+	if t == nil {
+		t = template.New(templateName)
+		templateText = p.TemplateText()
+	} else {
+		templateText = wrapTreeDefinition(templateName, p.TemplateText())
 	}
-	doCompile := func(t *template.Template, name string, tp TemplateProvider) (err error) {
-		t, err = tmpl.parser.Parse(t, name, define(name, tp.TemplateText()))
-		if err != nil {
-			return err
-		}
 
-		t, err = tmpl.compileNested(t, reflect.ValueOf(tp).Elem())
-		if err != nil {
-			return err
-		}
-
-		return
+	// TODO(tylermorton): I'd like to use tmpl.Parser directly here,
+	//  but its not possible as you cannot add multiple parse.Trees
+	//  to a template.[1] You must call t.Parse multiple times instead
+	//  Is this a bug in the html/template package? :/
+	//    - [1] why? bc t.AddParseTree overwrites the previously added
+	//          tree but t.Parse appends it ??
+	t, err = t.Parse(templateText)
+	if err != nil {
+		return nil, err
 	}
 
+	// Recursively compile any fields of this TemplateProvider
+	//   Fields can be:
+	//     - Struct value
+	//     - Pointer to struct
+	//     - Slice of struct values or pointers to structs
+	//     - Pointer to slice of struct values or pointers to structs :)
+	var val = reflect.ValueOf(p).Elem()
 	for i := 0; i < val.NumField(); i++ {
-		name, ok := val.Type().Field(i).Tag.Lookup("tmpl")
-		if !ok {
-			name = val.Type().Field(i).Name
+		field := val.Field(i)
+		if field.Kind() != reflect.Ptr &&
+			field.Kind() != reflect.Slice &&
+			field.Kind() != reflect.Struct {
+			continue
 		}
 
-		field := val.Field(i)
-		if field.Kind() == reflect.Slice {
-			if field.Type().Elem().Kind() == reflect.Ptr {
-				el := reflect.New(field.Type().Elem().Elem())
+		// templates can be named via the `tmpl` struct tag.
+		// otherwise they get named by their field name
+		templateName, ok = val.Type().Field(i).Tag.Lookup("tmpl")
+		if !ok {
+			templateName = val.Type().Field(i).Name
+		}
 
-				if tp, ok := el.Interface().(TemplateProvider); ok {
-					err := doCompile(t, name, tp)
-					if err != nil {
-						return nil, err
-					}
-				} else if tp, ok := el.Addr().Interface().(TemplateProvider); ok {
-					err := doCompile(t, name, tp)
-					if err != nil {
-						return nil, err
-					}
-				}
+		var intf reflect.Value
+		switch field.Kind() {
+		case reflect.Struct:
+			if field.Type().Kind() == reflect.Ptr {
+				intf = reflect.New(field.Type().Elem())
 			} else {
-				el := reflect.New(field.Type().Elem())
-
-				if tp, ok := el.Interface().(TemplateProvider); ok {
-					err := doCompile(t, name, tp)
-					if err != nil {
-						return nil, err
-					}
-				} else if tp, ok := el.Addr().Interface().(TemplateProvider); ok {
-					err := doCompile(t, name, tp)
-					if err != nil {
-						return nil, err
-					}
-				}
+				intf = reflect.New(field.Type())
 			}
-		} else {
-			if tp, ok := field.Interface().(TemplateProvider); ok {
-				err := doCompile(t, name, tp)
-				if err != nil {
-					return nil, err
-				}
-			} else if tp, ok := field.Addr().Interface().(TemplateProvider); ok {
-				err := doCompile(t, name, tp)
-				if err != nil {
-					return nil, err
-				}
+		case reflect.Ptr:
+			fallthrough
+		case reflect.Slice:
+			if field.Type().Elem().Kind() == reflect.Ptr {
+				intf = reflect.New(field.Type().Elem().Elem())
+			} else {
+				intf = reflect.New(field.Type().Elem())
+			}
+		}
+
+		// assert if the value implements TemplateProvider
+		if tp, ok := intf.Interface().(TemplateProvider); ok {
+			t, err = c.compile(t, templateName, tp)
+			if err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -110,49 +97,52 @@ func (tmpl *tmpl[T]) compileNested(t *template.Template, val reflect.Value) (*te
 	return t, nil
 }
 
-func (tmpl *tmpl[T]) spawnWatcherRoutine(w Watcher) {
-	ch := make(chan struct{})
-	ec := make(chan error)
+//func (tmpl *tmpl[T]) spawnWatcherRoutine(w Watcher) {
+//	ch := make(chan struct{})
+//	ec := make(chan error)
+//
+//	// spawn a goroutine to listen for new template files on the channel
+//	go func() {
+//		for {
+//			select {
+//			case <-ch:
+//				err := tmpl.compile(template.New(fmt.Sprintf("%T", tmpl.provider)), reflect.ValueOf(tmpl.provider).Elem())
+//				if err != nil {
+//					log.Printf("[Watch] Failed to compile %T: %+v\n", w, err)
+//				}
+//			case err := <-ec:
+//				log.Printf("[Watch] Failed to watch %T: %+v\n", w, err)
+//			}
+//		}
+//	}()
+//
+//	// register the channels with the object in charge of
+//	// watching the template file
+//	w.WatchSignal(ch, ec)
+//}
 
-	// spawn a goroutine to listen for new template files on the channel
-	go func() {
-		for {
-			select {
-			case <-ch:
-				err := tmpl.compile()
-				if err != nil {
-					log.Printf("[Watch] Failed to compile %T: %+v\n", w, err)
-				}
-			case err := <-ec:
-				log.Printf("[Watch] Failed to watch %T: %+v\n", w, err)
-			}
-		}
-	}()
-
-	// register the channels with the object in charge of
-	// watching the template file
-	w.WatchSignal(ch, ec)
-}
-
+// Compile takes the given TemplateProvider, parses the template text and then
+// recursively compiles all nested templates into one managed Template instance.
 func Compile[T TemplateProvider](p T) (Template[T], error) {
-	c := &tmpl[T]{
-		ctx:      context.Background(),
-		mu:       &sync.RWMutex{},
-		parser:   NewParser(),
-		p:        p,
-		template: template.New(fmt.Sprintf("%T", p)),
-	}
+	var (
+		n = strings.TrimPrefix(fmt.Sprintf("%T", p), "*")
+		c = &compiler{
+			ctx:    context.Background(),
+			parser: NewParser(),
+		}
+	)
 
-	err := c.compile()
+	t, err := c.compile(nil, n, p)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile template: %w", err)
 	}
 
-	if w, ok := reflect.ValueOf(p).Interface().(Watcher); ok {
-		go c.spawnWatcherRoutine(w)
-	}
-
-	return c, nil
+	return &tmpl[T]{
+		ctx:      c.ctx,
+		mu:       &sync.RWMutex{},
+		name:     t.Name(),
+		template: t,
+	}, nil
 }
 
 func MustCompile[T TemplateProvider](p T) Template[T] {

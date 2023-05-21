@@ -22,11 +22,8 @@ type tmpl[T TemplateProvider] struct {
 	ctx context.Context
 	// mu is the mutex used to write to the underlying template
 	mu *sync.RWMutex
-	// p is the value of the TemplateProvider originally passed
-	// to the Compile function
-	p TemplateProvider
-	// parser is the template's parser
-	parser Parser
+	// name is the name of the root template definition
+	name string
 	// template is the compiled Go template
 	template *template.Template
 }
