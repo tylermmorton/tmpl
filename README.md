@@ -53,7 +53,7 @@ If you're using the scaffold utility, annotate your struct with the `tmpl:bind` 
 ```go
 package main 
 
-//go:generate tmpl bind --outfile=tmpl.gen.go
+//go:generate tmpl bind --outfile=tmpl.gen.go .
 
 //tmpl:bind login.tmpl.html --watch
 type LoginPage struct {
@@ -93,7 +93,7 @@ import (
 	"github.com/tylermmorton/tmpl"
 )
 
-//go:generate tmpl bind --outfile=tmpl.gen.go
+//go:generate tmpl bind --outfile=tmpl.gen.go .
 
 //tmpl:bind login.tmpl.html
 type LoginPage struct {
@@ -139,7 +139,7 @@ Again, tie things together with a struct representing the dot context and run th
 ```go
 package main
 
-//go:generate tmpl bind --outfile=tmpl.gen.go
+//go:generate tmpl bind --outfile=tmpl.gen.go .
 
 //tmpl:bind head.tmpl.html
 type Head struct {
@@ -194,7 +194,7 @@ import (
 	"github.com/tylermmorton/tmpl"
 )
 
-//go:generate tmpl bind --outfile=tmpl.gen.go
+//go:generate tmpl bind --outfile=tmpl.gen.go .
 
 //tmpl:bind head.tmpl.html
 type Head struct {
@@ -246,7 +246,7 @@ You can override this on a per-template basis by passing the `--mode` flag on th
 ```go
 package main 
 
-//go:generate tmpl bind
+//go:generate tmpl bind .
 
 //tmpl:bind login.tmpl.html --watch
 type LoginPage struct {}
