@@ -44,18 +44,11 @@ Start by creating a template. You can use any of the standard Go template syntax
 </body>
 ```
 
-To bind your template to your Go code, declare a "template struct" that represents the "dot context" of the template. 
+### Dot Context
 
-Any struct fields or methods attached via pointer receiver will be available for use in your template. 
-
-If you're using the scaffold utility, annotate your struct with the `tmpl:bind` declaration. 
+To start tying your template to your Go code, declare a struct that represents the "dot context" of the template. The dot context is the value of the "dot" (`{{ . }}`) in Go's template syntax.
 
 ```go
-package main 
-
-//go:generate tmpl bind --outfile=tmpl.gen.go .
-
-//tmpl:bind login.tmpl.html --watch
 type LoginPage struct {
     Title     string
     Username  string
@@ -63,48 +56,90 @@ type LoginPage struct {
 }
 ```
 
-Executing the bind utility will generate a few things for you. Here's an example of the template bound via `go:embed`. This code usually lives in a separate file in your package named `tmpl.gen.go`
+- In this struct, any _exported_ fields or methods (attached via pointer receiver) will be accessible in your template from the all powerful dot.
 
+### `TemplateProvider`
+
+To turn your struct into a target for the tmpl compiler, your struct type must implement the `TemplateProvider` interface:
 ```go
-package main
-
-import (
-	_ "embed"
-)
-
-//go:embed login.tmpl.html
-var tmplLoginPageTemplateText string
-
-// TemplateText implements the tmpl.TemplateTextProvider interface
-func (t *LoginPage) TemplateText() string {
-	return tmplLoginPageTemplateText
+type TemplateProvider interface {
+    TemplateText() string
 }
 ```
 
-From here you can compile your template and use it in your application to render the result:
+The most straightforward way to accomplish this is to embed the template into your Go program using the `embed` package from the standard library.
 
 ```go
-package main
-
 import (
-	"bytes"
-	"fmt"
-	
-	"github.com/tylermmorton/tmpl"
+    _ "embed"
 )
 
-//go:generate tmpl bind --outfile=tmpl.gen.go .
+var (
+    //go:embed login.tmpl.html
+    tmplLoginPage string
+)
 
-//tmpl:bind login.tmpl.html
-type LoginPage struct {
-    Title    string
-    Username string
-    Password string
+type LoginPage struct { 
+    ... 
 }
 
-// Compile your templates when the program initializes
+func (*LoginPage) TemplateText() string {
+    return tmplLoginPage
+}
+```
+
+If you've opted into using the `tmpl` scaffold cli, you can use the `//tmpl:bind` annotation on your dot context struct instead.
+
+```go
+//tmpl:bind login.tmpl.html
+type LoginPage struct {
+    ...
+}
+```
+
+and run the utility:
+```shell
+tmpl bind . --outfile=tmpl.gen.go
+```
+
+> Tip: Run the utility using the [`//go:generate` annotation](https://go.dev/blog/generate) in your package
+
+`bind` works at the _package level_ and will generate a single file containing all the binding code for the annotated structs in your package.
+
+```go
+import (
+    _ "embed"
+)
+
 var (
-    // LoginTemplate can be used to render login.tmpl.html
+    //go:embed login.tmpl.html
+    tmplLoginPage string
+)
+
+func (*LoginPage) TemplateText() string {
+    return tmplLoginPage
+}
+```
+
+### Compilation
+
+From here you can compile your template and use it in your application to render the result. It is recommended to compile your template once at program startup by using `MustCompile`:
+
+```go
+var (
+	LoginTemplate = tmpl.MustCompile(&LoginPage{})
+)
+```
+
+If any of your template's syntax were to be invalid, the compiler will `panic` on application startup with a detailed error message. 
+> If you prefer avoid panics and handle the error yourself, use the `tmpl.Compile` variant.
+
+Once compiled, your template can be executed by calling the generic function `Render`. It takes an `io.Writer` and an instance of the dot context as parameters. 
+
+Compiled templates are safe to use from multiple Go routines.
+
+```go
+var (
     LoginTemplate = tmpl.MustCompile(&LoginPage{})
 )
 
@@ -123,42 +158,36 @@ func main() {
 }
 ```
 
-To be fair, this is a lot of work to render a single template, but we're just getting started. One of the core features of `tmpl` is the  ability to nest templates and use them in multiple places. 
+### Template Nesting
 
-Let's abstract the document `<head>` of our Login page into a separate template that can be reused by other pages:
+One advantage of using structs to bind templates is that nesting templates is as easy as nesting structs. The tmpl compiler will recursively look for fields that implement `TemplateProvider` as well.
+
+A good use case is to abstract the document `<head>` of the Login page into a separate template that can now be shared and reused by other pages:
 
 ```html
 <head>
     <meta charset="UTF-8">
-    <title>{{ .Title }}</title>
+    <title>{{ .Title }} | torque</title>
+    
+    {{ range .Scripts -}}
+        <script src="{{ . }}"></script>
+    {{ end -}}
 </head>
 ```
 
-Again, tie things together with a struct representing the dot context and run the bind utility:
+Again, tie things together with a struct representing the dot context and run the scaffolding utility:
 
 ```go
-package main
-
-//go:generate tmpl bind --outfile=tmpl.gen.go .
-
 //tmpl:bind head.tmpl.html
 type Head struct {
-    Title string
+    Title   string
+    Scripts []string
 }
 ```
 
-To nest a template in Go code its as easy as embedding one template struct into another:
-
-When you compile a template struct, the compiler will recursively compile all the fields that are also template structs into the final template instance.
+Now, update the `LoginPage` struct to embed the new `Head` template.
 
 ```go
-package main
-
-//tmpl:bind head.tmpl.html
-type Head struct {
-    Title string
-}
-
 //tmpl:bind login.tmpl.html
 type LoginPage struct {
     Head `tmpl:"head"`
@@ -168,9 +197,9 @@ type LoginPage struct {
 }
 ```
 
-Now update your login page template to use the new template named `head`:
+Update the login page template to use the nested template named `head`. This can be done using the built-in `template` directive.
 
-You can reference nested templates by using the built-in `template` directive. The name of the template is defined using the `tmpl` struct tag.
+>The name of the template is defined using the `tmpl` struct tag. If the tag is not present it can be referenced by its field name.
 
 ```html
 <!DOCTYPE html>
@@ -182,37 +211,10 @@ You can reference nested templates by using the built-in `template` directive. T
 </html>
 ```
 
-Here is the updated Go code:
-
+Finally, update references to `LoginPage` to include the nested template's dot as well.
 ```go
-package main
-
-import (
-	"bytes"
-	"fmt"
-	
-	"github.com/tylermmorton/tmpl"
-)
-
-//go:generate tmpl bind --outfile=tmpl.gen.go .
-
-//tmpl:bind head.tmpl.html
-type Head struct {
-	Title string
-}
-
-//tmpl:bind login.tmpl.html
-type LoginPage struct {
-	Head `tmpl:"head"`
-
-	Username string
-	Password string
-}
-
-// Compile your templates when the program initializes
 var (
-    // LoginTemplate can be used to render login.tmpl.html
-    LoginTemplate = tmpl.MustCompile(LoginPage{})
+    LoginTemplate = tmpl.MustCompile(&LoginPage{})
 )
 
 func main() {
@@ -220,6 +222,7 @@ func main() {
     err := LoginTemplate.Render(&buf, &LoginPage{
         Head: &Head{
             Title: "Login",
+            Scripts: []string{ "https://unpkg.com/htmx.org@1.9.2" },
         },
         Username: "",
         Password: "",
@@ -232,37 +235,56 @@ func main() {
 }
 ```
 
-## ⚙️ Configuration
+### `TemplateWatcher`
 
-`tmpl` uses environment variables to configure the behavior of the package. The following variables are available:
+It's common to want to be able to see changes to a template without restarting the application. A drawback of embeddinig templates with Go's `embed` package is that it's quite difficult to achieve hot reload functionality.
 
-### Bind Mode
-```dotenv
-TMPL_BIND_MODE=file|watch|embed
-```
-The bind mode specifies how the `tmpl bind` utility should generate the code used to bind your template files to your Go program.
-
-You can override this on a per-template basis by passing the `--mode` flag on the bind annotation:
+Instead, implement the `TemplateProvider` interface by reading the file from disk:
 ```go
-package main 
+import (
+    "os"
+)
 
-//go:generate tmpl bind .
+func (*LoginPage) TemplateText() string {
+    byt, err := os.ReadFile("~/abs/path/to/login.tmpl.html")
+    if err != nil {
+        panic(err)
+    }
+    return string(byt)
+}
+```
 
+The `TemplateWatcher` interface can be used to signal to tmpl that a compiled template should be recompiled. This operation is also safe across multiple Go routines.
+```go
+type TemplateWatcher interface {
+    Watch(signal chan struct{})
+}
+```
+
+An example of reloading a template from disk every 5 seconds:
+```go
+func (*LoginTemplate) Watch(signal chan struct{}) {
+    for {
+        signal <- struct{}{}
+        time.Sleep(time.Second * 5)
+    }
+}
+```
+
+### Hot Reload
+
+When using the `tmpl bind` utility, pass the `--watch` flag to enable the generation of `TemplateWatcher` implementations using the `github.com/fsnotify/fsnotify` package. 
+
+This can be done at a package level with `//go:generate` annotations or an easy way to generate watchers for all packages:
+
+```shell
+tmpl bind ./... --watch
+```
+
+The `//tmpl:bind` annotation also supports the `--watch` flag and it takes precedence over the value passed to the `tmpl bind` cli
+```go
 //tmpl:bind login.tmpl.html --watch
-type LoginPage struct {}
-```
-
-### Bind Go Type
-```dotenv
-TMPL_BIND_GOTYPE=true|false
-```
-
-When set to `true` (default) the `tmpl bind` utility will insert a Go type annotation on the first line of your template. This pattern is supported by GoLand and enables code completion and other IDE features.
-
-Here is an example of what gets generated. This has no effect on your template output:
-```html
-{{-/* gotype:github.com/tylermmorton/tmpl.LoginPage */-}}
-<!DOCTYPE html>
-<html lang="en">
-...
+type LoginPage struct {
+    ...
+}
 ```

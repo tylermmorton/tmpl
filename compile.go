@@ -90,7 +90,7 @@ func (c *compiler) compile(t *template.Template, templateName string, p Template
 
 		// assert if the value implements TemplateWatcher
 		if w, ok := intf.Interface().(TemplateWatcher); ok {
-			go w.Spawn(c.signal)
+			go w.Watch(c.signal)
 		}
 
 		// assert if the value implements TemplateProvider

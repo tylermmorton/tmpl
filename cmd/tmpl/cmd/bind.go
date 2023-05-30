@@ -19,7 +19,9 @@ import (
 )
 
 var (
-	BindMode *string
+	Outfile *string
+	Mode    *string
+	Watch   *bool
 
 	//go:embed templates/fileprovider.tmpl.go
 	fileProviderTmplText string
@@ -99,24 +101,12 @@ var bindCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(bindCmd)
 
-	// Here you will define your flags and configuration settings.
-	bindCmd.Flags().String("outfile", "tmpl.gen.go", "set the output go file for template bindings")
-
-	BindMode = bindCmd.Flags().String("mode", BinderTypeFile, "set the binder mode (embed|file)")
+	Mode = bindCmd.Flags().String("mode", BinderTypeFile, "set the binder mode (embed|file)")
+	Outfile = bindCmd.Flags().String("outfile", "tmpl.gen.go", "set the output go file for template bindings")
+	Watch = bindCmd.Flags().Bool("watch", false, "enable generation of `TemplateWatcher` implementations")
 }
 
 func analyzeGoFile(goFile string) []TemplateBinding {
-	var t string
-	if BindMode == nil {
-		var ok bool
-		t, ok = os.LookupEnv("TMPL_BIND_TYPE")
-		if !ok {
-			t = BinderTypeFile
-		}
-	} else {
-		t = *BindMode
-	}
-
 	res := make([]TemplateBinding, 0)
 	byt, err := os.ReadFile(goFile)
 	if os.IsNotExist(err) || (byt != nil && len(byt) == 0) {
@@ -150,7 +140,8 @@ func analyzeGoFile(goFile string) []TemplateBinding {
 									FileName:   s[1],
 									FilePath:   filepath.Join(filepath.Dir(goFile), s[1]),
 									StructType: ts.Name.Name,
-									BinderType: t,
+									BinderType: *Mode,
+									UseWatcher: *Watch,
 								}
 
 								for _, flag := range s[2:] {

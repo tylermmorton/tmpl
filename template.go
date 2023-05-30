@@ -8,7 +8,7 @@ import (
 )
 
 // TemplateProvider is a struct type that returns its corresponding template text.
-type TemplateProvider = interface {
+type TemplateProvider interface {
 	TemplateText() string
 }
 
