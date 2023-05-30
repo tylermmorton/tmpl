@@ -7,23 +7,17 @@ func (t *{{ .StructType }}) TemplateText() string {
 }
 
 {{ if .UseWatcher }}
-func (t *{{.StructType}}) WatchSignal(signal chan struct{}, ch chan error) {
+func (t *{{.StructType}}) Spawn(signal chan struct{}) {
+  ch := make(chan error)
+
   watcher, err := fsnotify.NewWatcher()
   if err != nil {
-    ch <- err
+    fmt.Printf("[watch] failed to create new watcher: %+v\n", err)
     return
   }
   defer watcher.Close()
 
-  // Recover any panics from reading the file
-  // and pass it along the given error channel
-  defer func(ch chan error) {
-    if err, ok := recover().(error); ok && err != nil {
-      ch <- err
-    }
-  }(ch)
-
-  go func() {
+  go func(chan error) {
     for {
       select {
       case event, ok := <-watcher.Events:
@@ -40,15 +34,20 @@ func (t *{{.StructType}}) WatchSignal(signal chan struct{}, ch chan error) {
         ch <- err
       }
     }
-  }()
+  }(ch)
 
   err = watcher.Add("{{.FilePath}}")
   if err != nil {
-    ch <- err
+    fmt.Printf("[watch] failed to add watcher: %+v\n", err)
     return
   }
 
-  // Block goroutine forever so the watcher doesn't get gc'd
-  <-make(chan struct{})
+  for {
+	  select {
+	    case err := <- ch:
+			  fmt.Printf("[watch] shutting down watcher, encountered error: %+v\n", err)
+			  return
+    }
+  }
 }
 {{ end }}

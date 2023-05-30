@@ -19,6 +19,8 @@ import (
 )
 
 var (
+	BindMode *string
+
 	//go:embed templates/fileprovider.tmpl.go
 	fileProviderTmplText string
 	//go:embed templates/textprovider.tmpl.go
@@ -99,13 +101,20 @@ func init() {
 
 	// Here you will define your flags and configuration settings.
 	bindCmd.Flags().String("outfile", "tmpl.gen.go", "set the output go file for template bindings")
-	//bindCmd.Flags().String("package", "", "set the output package name for the generated file")
+
+	BindMode = bindCmd.Flags().String("mode", BinderTypeFile, "set the binder mode (embed|file)")
 }
 
 func analyzeGoFile(goFile string) []TemplateBinding {
-	t, ok := os.LookupEnv("TMPL_BIND_TYPE")
-	if !ok {
-		t = BinderTypeFile
+	var t string
+	if BindMode == nil {
+		var ok bool
+		t, ok = os.LookupEnv("TMPL_BIND_TYPE")
+		if !ok {
+			t = BinderTypeFile
+		}
+	} else {
+		t = *BindMode
 	}
 
 	res := make([]TemplateBinding, 0)
@@ -185,6 +194,7 @@ func writeBinderFile(outfile string, packageName string, bindings []TemplateBind
 		case BinderTypeFile:
 			imports["os"] = ""
 			if binding.UseWatcher {
+				imports["fmt"] = ""
 				imports["github.com/fsnotify/fsnotify"] = ""
 			}
 		}
@@ -204,13 +214,15 @@ func writeBinderFile(outfile string, packageName string, bindings []TemplateBind
 	for _, binding := range bindings {
 		log.Printf("- write binder for %s %s", binding.FileName, strings.Join(binding.Args, " "))
 
-		t, err := template.New("binder").Parse(binding.TemplateText())
+		t := template.New("binder").Funcs(template.FuncMap{
+			"toCamelCase": toCamelCase,
+		})
+
+		t, err := t.Parse(binding.TemplateText())
 		if err != nil {
 			return fmt.Errorf("could not parse binder template: %v", err)
 		}
-		t.Funcs(template.FuncMap{
-			"toCamelCase": toCamelCase,
-		})
+
 		err = t.Execute(&b, &binding)
 		if err != nil {
 			return fmt.Errorf("could not execute binder template: %v", err)

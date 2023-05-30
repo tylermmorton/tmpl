@@ -13,6 +13,8 @@ import (
 type compiler struct {
 	ctx    context.Context
 	parser Parser
+	// signal is the signal channel that recompiles the template
+	signal chan struct{}
 }
 
 func wrapTreeDefinition(name string, body string) string {
@@ -28,6 +30,7 @@ func (c *compiler) compile(t *template.Template, templateName string, p Template
 	)
 
 	if t == nil {
+		// if t is nil, that means this is the recursive entrypoint
 		t = template.New(templateName)
 		templateText = p.TemplateText()
 	} else {
@@ -85,6 +88,11 @@ func (c *compiler) compile(t *template.Template, templateName string, p Template
 			}
 		}
 
+		// assert if the value implements TemplateWatcher
+		if w, ok := intf.Interface().(TemplateWatcher); ok {
+			go w.Spawn(c.signal)
+		}
+
 		// assert if the value implements TemplateProvider
 		if tp, ok := intf.Interface().(TemplateProvider); ok {
 			t, err = c.compile(t, templateName, tp)
@@ -92,44 +100,49 @@ func (c *compiler) compile(t *template.Template, templateName string, p Template
 				return nil, err
 			}
 		}
+
 	}
 
 	return t, nil
 }
 
-//func (tmpl *tmpl[T]) spawnWatcherRoutine(w Watcher) {
-//	ch := make(chan struct{})
-//	ec := make(chan error)
-//
-//	// spawn a goroutine to listen for new template files on the channel
-//	go func() {
-//		for {
-//			select {
-//			case <-ch:
-//				err := tmpl.compile(template.New(fmt.Sprintf("%T", tmpl.provider)), reflect.ValueOf(tmpl.provider).Elem())
-//				if err != nil {
-//					log.Printf("[Watch] Failed to compile %T: %+v\n", w, err)
-//				}
-//			case err := <-ec:
-//				log.Printf("[Watch] Failed to watch %T: %+v\n", w, err)
-//			}
-//		}
-//	}()
-//
-//	// register the channels with the object in charge of
-//	// watching the template file
-//	w.WatchSignal(ch, ec)
-//}
+func (c *compiler) watch(t *template.Template, mu *sync.RWMutex, p TemplateProvider) {
+	var (
+		n = strings.TrimPrefix(fmt.Sprintf("%T", p), "*")
+	)
+
+	for {
+		select {
+		case <-c.signal:
+			mu.Lock()
+
+			temp, err := c.compile(nil, n, p)
+			if err != nil {
+				fmt.Printf("[watch] build failed: %+v", err)
+			}
+
+			// overwrite the internal template pointer
+			t = temp
+			mu.Unlock()
+		}
+	}
+}
 
 // Compile takes the given TemplateProvider, parses the template text and then
 // recursively compiles all nested templates into one managed Template instance.
+//
+// Compile also spawns a watcher routine. If the given TemplateProvider or any
+// nested templates within implement TemplateWatcher, they can send signals over
+// the given channel when it is time for the template to be recompiled.
 func Compile[T TemplateProvider](p T) (Template[T], error) {
 	var (
 		n = strings.TrimPrefix(fmt.Sprintf("%T", p), "*")
 		c = &compiler{
 			ctx:    context.Background(),
 			parser: NewParser(),
+			signal: make(chan struct{}),
 		}
+		mu = &sync.RWMutex{}
 	)
 
 	t, err := c.compile(nil, n, p)
@@ -137,9 +150,13 @@ func Compile[T TemplateProvider](p T) (Template[T], error) {
 		return nil, fmt.Errorf("failed to compile template: %w", err)
 	}
 
+	// spawn a thread to receive recompile signals
+	// from any templates who implement TemplateWatcher
+	go c.watch(t, mu, p)
+
 	return &tmpl[T]{
 		ctx:      c.ctx,
-		mu:       &sync.RWMutex{},
+		mu:       mu,
 		name:     t.Name(),
 		template: t,
 	}, nil
