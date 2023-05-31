@@ -106,7 +106,7 @@ func (c *compiler) compile(t *template.Template, templateName string, p Template
 	return t, nil
 }
 
-func (c *compiler) watch(t *template.Template, mu *sync.RWMutex, p TemplateProvider) {
+func (c *compiler) watch(t *template.Template, mu *sync.RWMutex, relay chan struct{}, p TemplateProvider) {
 	var (
 		n = strings.TrimPrefix(fmt.Sprintf("%T", p), "*")
 	)
@@ -115,14 +115,15 @@ func (c *compiler) watch(t *template.Template, mu *sync.RWMutex, p TemplateProvi
 		select {
 		case <-c.signal:
 			mu.Lock()
-
 			temp, err := c.compile(nil, n, p)
 			if err != nil {
 				fmt.Printf("[watch] build failed: %+v", err)
+			} else {
+				// overwrite the internal template pointer and
+				// notify any listeners of a successful recompile
+				t = temp
+				relay <- struct{}{}
 			}
-
-			// overwrite the internal template pointer
-			t = temp
 			mu.Unlock()
 		}
 	}
@@ -150,15 +151,21 @@ func Compile[T TemplateProvider](p T) (Template[T], error) {
 		return nil, fmt.Errorf("failed to compile template: %w", err)
 	}
 
+	// relay represents an additional channel to receive
+	// signals when the compiler completes a watch build
+	// TODO: there's currently no api that can leverage this
+	relay := make(chan struct{})
+
 	// spawn a thread to receive recompile signals
 	// from any templates who implement TemplateWatcher
-	go c.watch(t, mu, p)
+	go c.watch(t, mu, relay, p)
 
 	return &tmpl[T]{
 		ctx:      c.ctx,
 		mu:       mu,
 		name:     t.Name(),
 		template: t,
+		signal:   relay,
 	}, nil
 }
 

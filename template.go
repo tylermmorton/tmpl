@@ -13,6 +13,7 @@ type TemplateProvider interface {
 }
 
 type Template[T TemplateProvider] interface {
+	// Render can be used to execute the internal template.
 	Render(w io.Writer, data T, opts ...RenderOption) error
 }
 
@@ -26,4 +27,7 @@ type tmpl[T TemplateProvider] struct {
 	name string
 	// template is the compiled Go template
 	template *template.Template
+	// signal represents the channel that will be notified when
+	// the internal template has been recompiled
+	signal chan struct{}
 }
