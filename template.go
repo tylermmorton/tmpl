@@ -2,14 +2,20 @@ package tmpl
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"io"
+	"strings"
 	"sync"
 )
 
 // TemplateProvider is a struct type that returns its corresponding template text.
 type TemplateProvider interface {
 	TemplateText() string
+}
+
+func nameFromProvider(p TemplateProvider) string {
+	return strings.TrimPrefix(fmt.Sprintf("%T", p), "*")
 }
 
 type Template[T TemplateProvider] interface {

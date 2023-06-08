@@ -5,16 +5,32 @@ import (
 	"fmt"
 	"html/template"
 	"reflect"
-	"strings"
 	"sync"
 )
 
+var builtinAnalyzers = []Analyzer{
+	staticTyping,
+}
+
 // compiler is the internal compiler instance
 type compiler struct {
-	ctx    context.Context
-	parser Parser
+	ctx context.Context
+	// analyzers is a list of analyzers that are run on the template
+	analyzers []Analyzer
 	// signal is the signal channel that recompiles the template
 	signal chan struct{}
+	// closer is the channel responsible for closing old watchers during
+	// a recompile
+	closer chan struct{}
+}
+
+// CompilerPlugin is a function that can be used to modify the compiler
+type CompilerPlugin func(c *compiler)
+
+func WithAnalyzers(analyzers ...Analyzer) CompilerPlugin {
+	return func(c *compiler) {
+		c.analyzers = append(c.analyzers, analyzers...)
+	}
 }
 
 func wrapTreeDefinition(name string, body string) string {
@@ -36,6 +52,20 @@ func (c *compiler) compile(t *template.Template, templateName string, p Template
 	} else {
 		templateText = wrapTreeDefinition(templateName, p.TemplateText())
 	}
+
+	// Part of the compilation process is to run a series of analyzers
+	// on the template. These analyzers are responsible for reporting
+	// errors or warnings in the template.
+	analysis, err := Analyze(p, AnalysisOptions{}, c.analyzers)
+	if err != nil {
+		return nil, err
+	}
+	if len(analysis.Errors) > 0 {
+		return nil, analysis
+	}
+
+	// TODO(tylermorton) Allow for addition of t.Funcs here
+	// TODO(tylermorton) Allow for addition of t.Options here
 
 	// TODO(tylermorton): I'd like to use tmpl.Parser directly here,
 	//  but its not possible as you cannot add multiple parse.Trees
@@ -70,37 +100,36 @@ func (c *compiler) compile(t *template.Template, templateName string, p Template
 			templateName = val.Type().Field(i).Name
 		}
 
-		var intf reflect.Value
+		// convert the field to an interface type that can be
+		// used with a type assertion
+		var iface interface{}
 		switch field.Kind() {
 		case reflect.Struct:
 			if field.Type().Kind() == reflect.Ptr {
-				intf = reflect.New(field.Type().Elem())
+				iface = reflect.New(field.Type().Elem()).Interface()
 			} else {
-				intf = reflect.New(field.Type())
+				iface = reflect.New(field.Type()).Interface()
 			}
 		case reflect.Ptr:
 			fallthrough
 		case reflect.Slice:
 			if field.Type().Elem().Kind() == reflect.Ptr {
-				intf = reflect.New(field.Type().Elem().Elem())
+				iface = reflect.New(field.Type().Elem().Elem()).Interface()
 			} else {
-				intf = reflect.New(field.Type().Elem())
+				iface = reflect.New(field.Type().Elem()).Interface()
 			}
 		}
 
-		// assert if the value implements TemplateWatcher
-		if w, ok := intf.Interface().(TemplateWatcher); ok {
-			go w.Watch(c.signal)
-		}
-
-		// assert if the value implements TemplateProvider
-		if tp, ok := intf.Interface().(TemplateProvider); ok {
+		if tp, ok := iface.(TemplateProvider); ok {
 			t, err = c.compile(t, templateName, tp)
 			if err != nil {
 				return nil, err
 			}
 		}
 
+		if w, ok := iface.(TemplateWatcher); ok {
+			go w.Watch(c.signal)
+		}
 	}
 
 	return t, nil
@@ -108,13 +137,19 @@ func (c *compiler) compile(t *template.Template, templateName string, p Template
 
 func (c *compiler) watch(t *template.Template, mu *sync.RWMutex, relay chan struct{}, p TemplateProvider) {
 	var (
-		n = strings.TrimPrefix(fmt.Sprintf("%T", p), "*")
+		n = nameFromProvider(p)
 	)
 
 	for {
 		select {
 		case <-c.signal:
 			mu.Lock()
+
+			// notify old watchers to shut down for recompile
+			c.closer <- struct{}{}
+			close(c.closer)
+			c.closer = make(chan struct{})
+
 			temp, err := c.compile(nil, n, p)
 			if err != nil {
 				fmt.Printf("[watch] build failed: %+v", err)
@@ -137,11 +172,11 @@ func (c *compiler) watch(t *template.Template, mu *sync.RWMutex, relay chan stru
 // the given channel when it is time for the template to be recompiled.
 func Compile[T TemplateProvider](p T) (Template[T], error) {
 	var (
-		n = strings.TrimPrefix(fmt.Sprintf("%T", p), "*")
+		n = nameFromProvider(p)
 		c = &compiler{
-			ctx:    context.Background(),
-			parser: NewParser(),
-			signal: make(chan struct{}),
+			ctx:       context.Background(),
+			signal:    make(chan struct{}),
+			analyzers: builtinAnalyzers,
 		}
 		mu = &sync.RWMutex{}
 	)

@@ -7,7 +7,7 @@ func (t *{{ .StructType }}) TemplateText() string {
 }
 
 {{ if .UseWatcher }}
-func (t *{{.StructType}}) Spawn(signal chan struct{}) {
+func (t *{{.StructType}}) Watch(signal chan struct{}) {
   ch := make(chan error)
 
   watcher, err := fsnotify.NewWatcher()
