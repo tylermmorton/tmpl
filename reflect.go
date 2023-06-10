@@ -5,25 +5,38 @@ import (
 	"reflect"
 )
 
-type fieldNode struct {
+type FieldNode struct {
 	reflect.StructField
 
 	Depth    int
-	Parent   *fieldNode
-	Children []*fieldNode
+	Parent   *FieldNode
+	Children []*FieldNode
+}
+
+func (node *FieldNode) FindPath(path []string) *FieldNode {
+	if len(path) == 0 {
+		return node
+	}
+
+	for _, child := range node.Children {
+		if child.Name == path[0] {
+			return child.FindPath(path[1:])
+		}
+	}
+
+	return nil
 }
 
 // createFieldTree can be used to create a tree structure of the fields in a struct
-// that implement the given generic interface type
-func createFieldTree(structOrPtr interface{}) (root *fieldNode, err error) {
-	root = &fieldNode{
+func createFieldTree(structOrPtr interface{}) (root *FieldNode, err error) {
+	root = &FieldNode{
 		StructField: reflect.StructField{
 			Name: fmt.Sprintf("%T", structOrPtr),
 		},
 
 		Depth:    0,
 		Parent:   nil,
-		Children: make([]*fieldNode, 0),
+		Children: make([]*FieldNode, 0),
 	}
 
 	val := reflect.ValueOf(structOrPtr)
@@ -43,11 +56,11 @@ func createFieldTree(structOrPtr interface{}) (root *fieldNode, err error) {
 			node.Depth = root.Depth + 1
 			root.Children = append(root.Children, node)
 		} else {
-			node := &fieldNode{
+			node := &FieldNode{
 				StructField: val.Type().Field(i),
 				Depth:       root.Depth + 1,
 				Parent:      root,
-				Children:    make([]*fieldNode, 0),
+				Children:    make([]*FieldNode, 0),
 			}
 			root.Children = append(root.Children, node)
 		}

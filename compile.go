@@ -7,17 +7,13 @@ import (
 	"sync"
 )
 
-var builtinAnalyzers = []Analyzer{
-	staticTyping,
-}
-
 // compiler is the internal compiler instance
 type compiler struct {
-	// parseOpts are the options passed to the tp parser
+	// parseOpts are the options passed to the templateProvider parser
 	parseOpts ParseOptions
-	// analyzers is a list of analyzers that are run on the tp
+	// analyzers is a list of analyzers that are run on the templateProvider
 	analyzers []Analyzer
-	// signal is the signal channel that recompiles the tp
+	// signal is the signal channel that recompiles the templateProvider
 	signal chan struct{}
 }
 
@@ -30,8 +26,8 @@ func UseAnalyzers(analyzers ...Analyzer) CompilerOption {
 	}
 }
 
-// UseParseOptions sets the ParseOptions for the tp compiler. These
-// options are used internally with the html/tp package.
+// UseParseOptions sets the ParseOptions for the templateProvider compiler. These
+// options are used internally with the html/templateProvider package.
 func UseParseOptions(opts ParseOptions) CompilerOption {
 	return func(c *compiler) {
 		c.parseOpts = opts
@@ -49,8 +45,8 @@ func compile(tp TemplateProvider, opts ParseOptions) (*template.Template, error)
 		return nil, err
 	}
 
-	// recursively parse all templates into a single tp instance
-	// this block is responsible for constructing the tp that
+	// recursively parse all templates into a single templateProvider instance
+	// this block is responsible for constructing the templateProvider that
 	// will be rendered by the user
 	err = recurseFieldsImplementing[TemplateProvider](tp, func(tp TemplateProvider, field reflect.StructField) error {
 		var templateText string
@@ -71,8 +67,8 @@ func compile(tp TemplateProvider, opts ParseOptions) (*template.Template, error)
 			// Analyzers can provide functions to be used in templates
 			t = t.Funcs(reporter.FuncMap())
 		} else {
-			// if this is a nested tp wrap its text in a {{ define }}
-			// statement, so it may be referenced by the "parent" tp
+			// if this is a nested templateProvider wrap its text in a {{ define }}
+			// statement, so it may be referenced by the "parent" templateProvider
 			// ex: {{define %q -}}\n%s{{end}}
 			templateText = fmt.Sprintf("%[1]sdefine %[3]q -%[2]s\n%[4]s%[1]send%[2]s\n", opts.LeftDelim, opts.RightDelim, templateName, tp.TemplateText())
 		}
@@ -85,18 +81,18 @@ func compile(tp TemplateProvider, opts ParseOptions) (*template.Template, error)
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to compile tp: %+v", err)
+		return nil, fmt.Errorf("failed to compile templateProvider: %+v", err)
 	}
 
 	return t, nil
 }
 
-// Compile takes the given TemplateProvider, parses the tp text and then
+// Compile takes the given TemplateProvider, parses the templateProvider text and then
 // recursively compiles all nested templates into one managed Template instance.
 //
 // Compile also spawns a watcher routine. If the given TemplateProvider or any
 // nested templates within implement TemplateWatcher, they can send signals over
-// the given channel when it is time for the tp to be recompiled.
+// the given channel when it is time for the templateProvider to be recompiled.
 func Compile[T TemplateProvider](tp T, opts ...CompilerOption) (Template[T], error) {
 	var (
 		c = &compiler{

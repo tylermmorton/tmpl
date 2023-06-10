@@ -24,7 +24,7 @@ type AnalysisHelper struct {
 
 	// fieldTree is a tree structure of all struct fields in the TemplateProvider,
 	// as well as all of its children.
-	fieldTree *fieldNode
+	fieldTree *FieldNode
 
 	//analysis data
 	// errors is a slice of Errors that occurred during analysis.
@@ -46,6 +46,11 @@ func (h *AnalysisHelper) IsDefined(name string) bool {
 	return ok
 }
 
+func (h *AnalysisHelper) GetDefinedField(name string) *FieldNode {
+	name = strings.TrimPrefix(name, ".")
+	return h.fieldTree.FindPath(strings.Split(name, "."))
+}
+
 func (h *AnalysisHelper) FuncMap() template.FuncMap {
 	return h.funcMap
 }
@@ -62,7 +67,7 @@ func (h *AnalysisHelper) AddFunc(name string, fn interface{}) {
 	h.funcMap[name] = fn
 }
 
-// ParseOptions controls the behavior of the tp parser used by Analyze.
+// ParseOptions controls the behavior of the templateProvider parser used by Analyze.
 type ParseOptions struct {
 	LeftDelim  string
 	RightDelim string
@@ -70,11 +75,11 @@ type ParseOptions struct {
 
 type AnalyzerFunc func(val reflect.Value, node parse.Node)
 
-// Analyzer is a type that parses tp text and performs an analysis
+// Analyzer is a type that parses templateProvider text and performs an analysis
 type Analyzer func(res *AnalysisHelper) AnalyzerFunc
 
 // Analyze uses reflection on the given TemplateProvider while also parsing the
-// tp text to perform an analysis. The analysis is performed by the given
+// templateProvider text to perform an analysis. The analysis is performed by the given
 // analyzers. The analysis is returned as an AnalysisHelper struct.
 func Analyze(tp TemplateProvider, opts ParseOptions, analyzers []Analyzer) (*AnalysisHelper, error) {
 	helper, err := createHelper(tp, opts)
