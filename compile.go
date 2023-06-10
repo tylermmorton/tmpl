@@ -1,7 +1,6 @@
 package tmpl
 
 import (
-	"context"
 	"fmt"
 	"html/template"
 	"reflect"
@@ -14,198 +13,125 @@ var builtinAnalyzers = []Analyzer{
 
 // compiler is the internal compiler instance
 type compiler struct {
-	ctx context.Context
-	// analyzers is a list of analyzers that are run on the template
+	// parseOpts are the options passed to the tp parser
+	parseOpts ParseOptions
+	// analyzers is a list of analyzers that are run on the tp
 	analyzers []Analyzer
-	// signal is the signal channel that recompiles the template
+	// signal is the signal channel that recompiles the tp
 	signal chan struct{}
-	// closer is the channel responsible for closing old watchers during
-	// a recompile
-	closer chan struct{}
 }
 
-// CompilerPlugin is a function that can be used to modify the compiler
-type CompilerPlugin func(c *compiler)
+// CompilerOption is a function that can be used to modify the compiler
+type CompilerOption func(c *compiler)
 
-func WithAnalyzers(analyzers ...Analyzer) CompilerPlugin {
+func UseAnalyzers(analyzers ...Analyzer) CompilerOption {
 	return func(c *compiler) {
 		c.analyzers = append(c.analyzers, analyzers...)
 	}
 }
 
-func wrapTreeDefinition(name string, body string) string {
-	return fmt.Sprintf("{{define %q -}}\n%s{{end}}\n", name, body)
+// UseParseOptions sets the ParseOptions for the tp compiler. These
+// options are used internally with the html/tp package.
+func UseParseOptions(opts ParseOptions) CompilerOption {
+	return func(c *compiler) {
+		c.parseOpts = opts
+	}
 }
 
-// compile is the template compiler implementation. it orchestrates the entire compilation process.
-func (c *compiler) compile(t *template.Template, templateName string, p TemplateProvider) (*template.Template, error) {
+func compile(tp TemplateProvider, opts ParseOptions) (*template.Template, error) {
 	var (
-		err          error
-		ok           bool
-		templateText string
+		err error
+		t   *template.Template
 	)
 
-	if t == nil {
-		// if t is nil, that means this is the recursive entrypoint
-		t = template.New(templateName)
-		templateText = p.TemplateText()
-	} else {
-		templateText = wrapTreeDefinition(templateName, p.TemplateText())
-	}
-
-	// Part of the compilation process is to run a series of analyzers
-	// on the template. These analyzers are responsible for reporting
-	// errors or warnings in the template.
-	analysis, err := Analyze(p, AnalysisOptions{}, c.analyzers)
-	if err != nil {
-		return nil, err
-	}
-	if len(analysis.Errors) > 0 {
-		return nil, analysis
-	}
-
-	// TODO(tylermorton) Allow for addition of t.Funcs here
-	// TODO(tylermorton) Allow for addition of t.Options here
-
-	// TODO(tylermorton): I'd like to use tmpl.Parser directly here,
-	//  but its not possible as you cannot add multiple parse.Trees
-	//  to a template.[1] You must call t.Parse multiple times instead
-	//  Is this a bug in the html/template package? :/
-	//    - [1] why? bc t.AddParseTree overwrites the previously added
-	//          tree but t.Parse appends it ??
-	t, err = t.Parse(templateText)
+	reporter, err := Analyze(tp, opts, builtinAnalyzers)
 	if err != nil {
 		return nil, err
 	}
 
-	// Recursively compile any fields of this TemplateProvider
-	//   Fields can be:
-	//     - Struct value
-	//     - Pointer to struct
-	//     - Slice of struct values or pointers to structs
-	//     - Pointer to slice of struct values or pointers to structs :)
-	var val = reflect.ValueOf(p).Elem()
-	for i := 0; i < val.NumField(); i++ {
-		field := val.Field(i)
-		if field.Kind() != reflect.Ptr &&
-			field.Kind() != reflect.Slice &&
-			field.Kind() != reflect.Struct {
-			continue
-		}
+	// recursively parse all templates into a single tp instance
+	// this block is responsible for constructing the tp that
+	// will be rendered by the user
+	err = recurseFieldsImplementing[TemplateProvider](tp, func(tp TemplateProvider, field reflect.StructField) error {
+		var templateText string
 
-		// templates can be named via the `tmpl` struct tag.
-		// otherwise they get named by their field name
-		templateName, ok = val.Type().Field(i).Tag.Lookup("tmpl")
+		templateName, ok := field.Tag.Lookup("tmpl")
 		if !ok {
-			templateName = val.Type().Field(i).Name
+			templateName = field.Name
 		}
 
-		// convert the field to an interface type that can be
-		// used with a type assertion
-		var iface interface{}
-		switch field.Kind() {
-		case reflect.Struct:
-			if field.Type().Kind() == reflect.Ptr {
-				iface = reflect.New(field.Type().Elem()).Interface()
-			} else {
-				iface = reflect.New(field.Type()).Interface()
-			}
-		case reflect.Ptr:
-			fallthrough
-		case reflect.Slice:
-			if field.Type().Elem().Kind() == reflect.Ptr {
-				iface = reflect.New(field.Type().Elem().Elem()).Interface()
-			} else {
-				iface = reflect.New(field.Type().Elem()).Interface()
-			}
+		if t == nil {
+			// if t is nil, that means this is the recursive entrypoint
+			// and some construction needs to happen
+			t = template.New(templateName)
+			templateText = tp.TemplateText()
+
+			t = t.Delims(opts.LeftDelim, opts.RightDelim)
+
+			// Analyzers can provide functions to be used in templates
+			t = t.Funcs(reporter.FuncMap())
+		} else {
+			// if this is a nested tp wrap its text in a {{ define }}
+			// statement, so it may be referenced by the "parent" tp
+			// ex: {{define %q -}}\n%s{{end}}
+			templateText = fmt.Sprintf("%[1]sdefine %[3]q -%[2]s\n%[4]s%[1]send%[2]s\n", opts.LeftDelim, opts.RightDelim, templateName, tp.TemplateText())
 		}
 
-		if tp, ok := iface.(TemplateProvider); ok {
-			t, err = c.compile(t, templateName, tp)
-			if err != nil {
-				return nil, err
-			}
+		t, err = t.Parse(templateText)
+		if err != nil {
+			return err
 		}
 
-		if w, ok := iface.(TemplateWatcher); ok {
-			go w.Watch(c.signal)
-		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile tp: %+v", err)
 	}
 
 	return t, nil
 }
 
-func (c *compiler) watch(t *template.Template, mu *sync.RWMutex, relay chan struct{}, p TemplateProvider) {
-	var (
-		n = nameFromProvider(p)
-	)
-
-	for {
-		select {
-		case <-c.signal:
-			mu.Lock()
-
-			// notify old watchers to shut down for recompile
-			c.closer <- struct{}{}
-			close(c.closer)
-			c.closer = make(chan struct{})
-
-			temp, err := c.compile(nil, n, p)
-			if err != nil {
-				fmt.Printf("[watch] build failed: %+v", err)
-			} else {
-				// overwrite the internal template pointer and
-				// notify any listeners of a successful recompile
-				t = temp
-				relay <- struct{}{}
-			}
-			mu.Unlock()
-		}
-	}
-}
-
-// Compile takes the given TemplateProvider, parses the template text and then
+// Compile takes the given TemplateProvider, parses the tp text and then
 // recursively compiles all nested templates into one managed Template instance.
 //
 // Compile also spawns a watcher routine. If the given TemplateProvider or any
 // nested templates within implement TemplateWatcher, they can send signals over
-// the given channel when it is time for the template to be recompiled.
-func Compile[T TemplateProvider](p T) (Template[T], error) {
+// the given channel when it is time for the tp to be recompiled.
+func Compile[T TemplateProvider](tp T, opts ...CompilerOption) (Template[T], error) {
 	var (
-		n = nameFromProvider(p)
 		c = &compiler{
-			ctx:       context.Background(),
-			signal:    make(chan struct{}),
 			analyzers: builtinAnalyzers,
+			signal:    make(chan struct{}),
+			parseOpts: ParseOptions{
+				LeftDelim:  "{{",
+				RightDelim: "}}",
+			},
 		}
-		mu = &sync.RWMutex{}
 	)
 
-	t, err := c.compile(nil, n, p)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compile template: %w", err)
+	for _, opt := range opts {
+		opt(c)
 	}
 
-	// relay represents an additional channel to receive
-	// signals when the compiler completes a watch build
-	// TODO: there's currently no api that can leverage this
-	relay := make(chan struct{})
+	t, err := compile(tp, c.parseOpts)
+	if err != nil {
+		return nil, err
+	}
 
-	// spawn a thread to receive recompile signals
-	// from any templates who implement TemplateWatcher
-	go c.watch(t, mu, relay, p)
+	// recursively spawn goroutines to watch for recompile signals
+	err = recurseFieldsImplementing[TemplateWatcher](tp, func(w TemplateWatcher, field reflect.StructField) error {
+		go w.Watch(c.signal)
+		return nil
+	})
 
 	return &tmpl[T]{
-		ctx:      c.ctx,
-		mu:       mu,
-		name:     t.Name(),
+		mu:       &sync.RWMutex{},
 		template: t,
-		signal:   relay,
 	}, nil
 }
 
-func MustCompile[T TemplateProvider](p T) Template[T] {
-	tmpl, err := Compile(p)
+func MustCompile[T TemplateProvider](p T, opts ...CompilerOption) Template[T] {
+	tmpl, err := Compile(p, opts...)
 	if err != nil {
 		panic(err)
 	}

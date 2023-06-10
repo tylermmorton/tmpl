@@ -20,13 +20,9 @@ func hasFieldOrMethod(val reflect.Value, name string) bool {
 	return false
 }
 
-func hasTemplateProvider(val reflect.Value, name string) bool {
-	return false
-}
-
-// staticTyping enables static type checking on template parse trees by using
+// staticTyping enables static type checking on tp parse trees by using
 // reflection on the given struct type.
-var staticTyping Analyzer = func(report *AnalysisReporter) AnalyzerFunc {
+var staticTyping Analyzer = func(helper *AnalysisHelper) AnalyzerFunc {
 	return func(val reflect.Value, node parse.Node) {
 		switch typ := node.(type) {
 		case *parse.IfNode:
@@ -34,7 +30,7 @@ var staticTyping Analyzer = func(report *AnalysisReporter) AnalyzerFunc {
 				for _, arg := range cmd.Args {
 					ident := strings.TrimPrefix(arg.String(), ".")
 					if !hasFieldOrMethod(val, ident) {
-						report.AddError(node, fmt.Sprintf("field %q not defined in type %T", ident, val.Interface()))
+						helper.AddError(node, fmt.Sprintf("field %q not defined in type %T", ident, val.Interface()))
 					}
 				}
 			}
@@ -43,16 +39,14 @@ var staticTyping Analyzer = func(report *AnalysisReporter) AnalyzerFunc {
 				for _, arg := range cmd.Args {
 					ident := strings.TrimPrefix(arg.String(), ".")
 					if !hasFieldOrMethod(val, ident) {
-						report.AddError(node, fmt.Sprintf("field %q not defined in type %T", ident, val.Interface()))
+						helper.AddError(node, fmt.Sprintf("field %q not defined in type %T", ident, val.Interface()))
 					}
 				}
 			}
 		case *parse.TemplateNode:
-			// TODO
-			break
-			//if !hasTemplateProvider(val, typ.Name) {
-			//	report.AddError(node, fmt.Sprintf("template %q not defined in %T or any nested providers", typ.Name, val.Interface()))
-			//}
+			if !helper.IsDefined(typ.Name) {
+				helper.AddError(node, fmt.Sprintf("template %q is not provided by type %T or any of its embedded templates", typ.Name, val.Interface()))
+			}
 		}
 	}
 }
