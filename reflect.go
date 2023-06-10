@@ -6,11 +6,22 @@ import (
 )
 
 type FieldNode struct {
-	reflect.StructField
+	Value       reflect.Value
+	StructField reflect.StructField
 
 	Depth    int
 	Parent   *FieldNode
 	Children []*FieldNode
+}
+
+func (node *FieldNode) IsKind(kind reflect.Kind) (reflect.Kind, bool) {
+	if node.StructField.Type.Kind() == reflect.Interface && node.Value.Kind() != kind {
+		return node.Value.Kind(), false
+	} else if node.StructField.Type.Kind() != kind {
+		return node.StructField.Type.Kind(), false
+	} else {
+		return kind, true
+	}
 }
 
 func (node *FieldNode) FindPath(path []string) *FieldNode {
@@ -19,7 +30,7 @@ func (node *FieldNode) FindPath(path []string) *FieldNode {
 	}
 
 	for _, child := range node.Children {
-		if child.Name == path[0] {
+		if child.StructField.Name == path[0] {
 			return child.FindPath(path[1:])
 		}
 	}
@@ -29,7 +40,13 @@ func (node *FieldNode) FindPath(path []string) *FieldNode {
 
 // createFieldTree can be used to create a tree structure of the fields in a struct
 func createFieldTree(structOrPtr interface{}) (root *FieldNode, err error) {
+	val := reflect.ValueOf(structOrPtr)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
 	root = &FieldNode{
+		Value: val,
 		StructField: reflect.StructField{
 			Name: fmt.Sprintf("%T", structOrPtr),
 		},
@@ -37,11 +54,6 @@ func createFieldTree(structOrPtr interface{}) (root *FieldNode, err error) {
 		Depth:    0,
 		Parent:   nil,
 		Children: make([]*FieldNode, 0),
-	}
-
-	val := reflect.ValueOf(structOrPtr)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
 	}
 
 	for i := 0; i < val.NumField(); i++ {
@@ -57,6 +69,7 @@ func createFieldTree(structOrPtr interface{}) (root *FieldNode, err error) {
 			root.Children = append(root.Children, node)
 		} else {
 			node := &FieldNode{
+				Value:       val.Field(i),
 				StructField: val.Type().Field(i),
 				Depth:       root.Depth + 1,
 				Parent:      root,

@@ -24,10 +24,10 @@ var staticTyping Analyzer = func(helper *AnalysisHelper) AnalyzerFunc {
 					case *parse.FieldNode:
 						field := helper.GetDefinedField(argTyp.String())
 						if field == nil {
-							helper.AddError(node, fmt.Sprintf("field %q not defined in type %T", argTyp.String(), val.Interface()))
+							helper.AddError(node, fmt.Sprintf("field %q not defined in struct %T", argTyp.String(), val.Interface()))
+						} else if kind, ok := field.IsKind(reflect.Bool); !ok {
+							helper.AddError(node, fmt.Sprintf("field %q is not type bool: got %s", argTyp.String(), kind))
 						}
-
-						// TODO: assert that this field is a bool
 
 						visited[argTyp] = true
 					}
@@ -42,7 +42,7 @@ var staticTyping Analyzer = func(helper *AnalysisHelper) AnalyzerFunc {
 					case *parse.FieldNode:
 						field := helper.GetDefinedField(argTyp.String())
 						if field == nil {
-							helper.AddError(node, fmt.Sprintf("field %q not defined in type %T", argTyp.String(), val.Interface()))
+							helper.AddError(node, fmt.Sprintf("field %q not defined in struct %T", argTyp.String(), val.Interface()))
 						}
 
 						// TODO: assert that this field is a slice or array
@@ -54,8 +54,8 @@ var staticTyping Analyzer = func(helper *AnalysisHelper) AnalyzerFunc {
 			break
 
 		case *parse.TemplateNode:
-			if !helper.IsDefined(typ.Name) {
-				helper.AddError(node, fmt.Sprintf("template %q is not provided by type %T or any of its embedded templates", typ.Name, val.Interface()))
+			if !helper.IsDefinedTemplate(typ.Name) {
+				helper.AddError(node, fmt.Sprintf("template %q is not provided by struct %T or any of its embedded structs", typ.Name, val.Interface()))
 			}
 
 			break
@@ -69,7 +69,7 @@ var staticTyping Analyzer = func(helper *AnalysisHelper) AnalyzerFunc {
 
 			field := helper.GetDefinedField(typ.String())
 			if field == nil {
-				helper.AddError(node, fmt.Sprintf("field %q not defined in type %T", typ.String(), val.Interface()))
+				helper.AddError(node, fmt.Sprintf("field %q not defined in struct %T", typ.String(), val.Interface()))
 			}
 
 			// TODO: can we make further assertions here about the type of the field?

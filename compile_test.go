@@ -5,72 +5,12 @@ import (
 	_ "embed"
 	"strings"
 	"testing"
+
+	. "github.com/tylermmorton/tmpl/testdata"
 )
 
-// TODO: refactor these templateProvider structs to use tmpl:bind
-
-type TextComponent struct {
-	Text string
-}
-
-func (t *TextComponent) String() string {
-	return t.Text
-}
-
-func (*TextComponent) TemplateText() string {
-	return "{{.}}"
-}
-
-type ScriptComponent struct {
-	Source string
-}
-
-func (*ScriptComponent) TemplateText() string {
-	return "<script src=\"{{.Source}}\"></script>"
-}
-
-type UndefinedTemplate struct{}
-
-func (*UndefinedTemplate) TemplateText() string {
-	return `{{ template "undefined" }}`
-}
-
-type UndefinedRange struct{}
-
-func (*UndefinedRange) TemplateText() string {
-	return `{{ range .UndList }}{{ end }}`
-}
-
-type DefinedField struct {
-	DefField string
-}
-
-func (*DefinedField) TemplateText() string {
-	return `{{ .DefField }}`
-}
-
-type DefinedNestedField struct {
-	Nested DefinedField
-}
-
-func (*DefinedNestedField) TemplateText() string {
-	return `{{ .Nested.DefField }}`
-}
-
-type UndefinedField struct{}
-
-func (*UndefinedField) TemplateText() string {
-	return `{{ .UndField }}`
-}
-
-type UndefinedNestedField struct {
-	Nested UndefinedField
-}
-
-func (*UndefinedNestedField) TemplateText() string {
-	return `{{ .Nested.UndField }}`
-}
-
+// TODO: replace tests with table driven tests
+// @deprecated
 type TestTemplate struct {
 	// Name tests fields who do not implement TemplateProvider
 	Name string
@@ -126,6 +66,12 @@ func Test_Compile(t *testing.T) {
 				"<form id=\"defineForm\">",
 			},
 		},
+		"Supports usage of {{ if }} statements": {
+			templateProvider: &DefinedIf{DefIf: true, Message: "Hello World"},
+			expectRenderOutput: []string{
+				"Hello World",
+			},
+		},
 		"Supports usage of {{ range }} statements": {
 			templateProvider: &TestTemplate{
 				Title: "Test",
@@ -147,6 +93,14 @@ func Test_Compile(t *testing.T) {
 		"Catches usage of {{ template }} statements containing undefined template names": {
 			templateProvider:    &UndefinedTemplate{},
 			expectCompileErrMsg: "template \"undefined\" is not provided",
+		},
+		"Catches usage of {{ if }} statements containing non-bool types": {
+			templateProvider:    &AnyTypeIf{DefIf: 0},
+			expectCompileErrMsg: "field \".DefIf\" is not type bool: got int",
+		},
+		"Catches usage of {{ if }} statements containing undefined fields": {
+			templateProvider:    &UndefinedIf{},
+			expectCompileErrMsg: "field \".UndIf\" not defined",
 		},
 		"Catches usage of {{ range }} statements containing undefined fields": {
 			templateProvider:    &UndefinedRange{},

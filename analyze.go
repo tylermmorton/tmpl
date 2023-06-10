@@ -39,9 +39,9 @@ type AnalysisHelper struct {
 	// Fixers []FixerFn
 }
 
-// IsDefined returns true if the given template name is defined in the
+// IsDefinedTemplate returns true if the given template name is defined in the
 // analysis target via {{define}}, or defined by any of its embedded templates.
-func (h *AnalysisHelper) IsDefined(name string) bool {
+func (h *AnalysisHelper) IsDefinedTemplate(name string) bool {
 	_, ok := h.treeSet[name]
 	return ok
 }
