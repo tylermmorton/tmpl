@@ -23,9 +23,9 @@ var (
 	Mode    *string
 	Watch   *bool
 
-	//go:embed templates/fileprovider.tmpl.go
+	//go:embed templates/fileprovider.tmpl
 	fileProviderTmplText string
-	//go:embed templates/textprovider.tmpl.go
+	//go:embed templates/textprovider.tmpl
 	textProviderTmplText string
 )
 
