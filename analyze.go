@@ -21,6 +21,12 @@ type AnalysisHelper struct {
 	// treeSet is a map of all templates defined in the TemplateProvider,
 	// as well as all of its children.
 	treeSet map[string]*parse.Tree
+
+	// fieldTree is a tree structure of all struct fields in the TemplateProvider,
+	// as well as all of its children.
+	fieldTree *fieldNode
+
+	//analysis data
 	// errors is a slice of Errors that occurred during analysis.
 	errors []string
 	// warnings is a slice of Warnings that occurred during analysis.
@@ -71,7 +77,37 @@ type Analyzer func(res *AnalysisHelper) AnalyzerFunc
 // tp text to perform an analysis. The analysis is performed by the given
 // analyzers. The analysis is returned as an AnalysisHelper struct.
 func Analyze(tp TemplateProvider, opts ParseOptions, analyzers []Analyzer) (*AnalysisHelper, error) {
-	helper := &AnalysisHelper{
+	helper, err := createHelper(tp, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	pt := helper.treeSet[strings.TrimPrefix(fmt.Sprintf("%T", tp), "*")]
+	val := reflect.ValueOf(tp)
+
+	// Do the actual traversal and analysis of the given template provider
+	Traverse(pt.Root, Visitor(func(node parse.Node) {
+		for _, fn := range analyzers {
+			fn(helper)(val, node)
+		}
+	}))
+
+	// During runtime compilation we're only worried about errors
+	// During static analysis we're worried about errors but also
+	//   return the helper to print warnings and other information
+	if len(helper.errors) > 0 {
+		errs := make([]error, 0)
+		for _, err := range helper.errors {
+			errs = append(errs, fmt.Errorf(err))
+		}
+		return helper, errors.Join(errs...)
+	}
+
+	return helper, nil
+}
+
+func createHelper(tp TemplateProvider, opts ParseOptions) (helper *AnalysisHelper, err error) {
+	helper = &AnalysisHelper{
 		treeSet: make(map[string]*parse.Tree),
 
 		errors:   make([]string, 0),
@@ -84,8 +120,14 @@ func Analyze(tp TemplateProvider, opts ParseOptions, analyzers []Analyzer) (*Ana
 		opts.RightDelim = "}}"
 	}
 
-	// collects all defined template names
-	err := recurseFieldsImplementing[TemplateProvider](tp, func(tp TemplateProvider, field reflect.StructField) error {
+	// create a tree of all fields for static type checking
+	helper.fieldTree, err = createFieldTree(tp)
+	if err != nil {
+		return nil, err
+	}
+
+	// create one big parse.Tree set of all templates, including embedded templates
+	err = recurseFieldsImplementing[TemplateProvider](tp, func(tp TemplateProvider, field reflect.StructField) error {
 		templateName, ok := field.Tag.Lookup("tmpl")
 		if !ok {
 			templateName = strings.TrimPrefix(field.Name, "*")
@@ -106,28 +148,6 @@ func Analyze(tp TemplateProvider, opts ParseOptions, analyzers []Analyzer) (*Ana
 
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
 
-	pt := helper.treeSet[strings.TrimPrefix(fmt.Sprintf("%T", tp), "*")]
-	val := reflect.ValueOf(tp)
-
-	// Do the actual traversal and analysis of the given template provider
-	Traverse(pt.Root, Visitor(func(node parse.Node) {
-		for _, fn := range analyzers {
-			fn(helper)(val, node)
-		}
-	}))
-
-	// During runtime compilation we're only worried about errors
-	if len(helper.errors) > 0 {
-		errs := make([]error, 0)
-		for _, err := range helper.errors {
-			errs = append(errs, fmt.Errorf(err))
-		}
-		return helper, errors.Join(errs...)
-	}
-
-	return helper, nil
+	return
 }
