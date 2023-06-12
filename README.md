@@ -4,16 +4,16 @@
 
 tmpl is a wrapper around Go's `html/template` package that aims to solve some of the pain points developers commonly run into while working with templates. This project attempts to improve the overall template workflow and offers a few helpful utilities for developers building html based applications:
 
-- Compile-time type safety when referencing templates in Go code
+- Two-way type safety when referencing templates in Go code and visa versa
 - Nested templates and template fragments
 - Template extensibility through compiler plugins
 - Static analysis utilities such as template parse tree traversal
-- Convenient CLI for binding templates to Go code
-- Load from disk in development with hot reloading, embed in binary for production
+- Convenient but optional CLI for binding templates to Go code
 
 *Roadmap & Idea List*
 
-- Documentation on how to use `tmpl.Parser` for parse tree traversal and static analysis of templates
+- Load from disk in development with hot reloading, embed in binary for production
+- Documentation on how to use `tmpl.Analyze` for parse tree traversal and static analysis of templates
 - Automatic generation of [GoLand `{{ gotype: }}` annotations](https://www.jetbrains.com/help/go/integration-with-go-templates.html) when using the `tmpl` CLI
 - Improve the compiler API, add portability and watcher callbacks
 - Parsing and static analysis of the html in a template
