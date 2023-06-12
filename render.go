@@ -37,7 +37,7 @@ func WithFuncs(funcs template.FuncMap) RenderOption {
 	}
 }
 
-func (tmpl *tmpl[T]) Render(wr io.Writer, data T, opts ...RenderOption) error {
+func (tmpl *managedTemplate[T]) Render(wr io.Writer, data T, opts ...RenderOption) error {
 	tmpl.mu.RLock()
 	t, err := tmpl.template.Clone()
 	tmpl.mu.RUnlock()

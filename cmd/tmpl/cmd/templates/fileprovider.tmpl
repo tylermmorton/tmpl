@@ -7,7 +7,7 @@ func (t *{{ .StructType }}) TemplateText() string {
 }
 
 {{ if .UseWatcher }}
-func (t *{{.StructType}}) Watch(signal chan struct{}) {
+func (t *{{.StructType}}) Watch(compile func() error) {
   ch := make(chan error)
 
   watcher, err := fsnotify.NewWatcher()
@@ -25,7 +25,10 @@ func (t *{{.StructType}}) Watch(signal chan struct{}) {
           return
         }
         if event.Has(fsnotify.Write) {
-          signal <- struct{}{}
+          err := compile()
+          if err != nil {
+            fmt.Printf("[watch] failed to compile template: %+v\n", err)
+          }
         }
       case err, ok := <-watcher.Errors:
         if !ok {
