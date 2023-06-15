@@ -32,6 +32,36 @@ func (*UndefinedRange) TemplateText() string {
 	return `{{ range .UndList }}{{ end }}`
 }
 
+type DefinedRange struct {
+	DefList []string
+}
+
+func (*DefinedRange) TemplateText() string {
+	return `{{ range .DefList }}{{ . }}{{ end }}`
+}
+
+type StructRange struct {
+	DefList []struct {
+		DefField string
+	}
+}
+
+func (*StructRange) TemplateText() string {
+	return `{{ range .DefList }}{{ .DefField }}{{ end }}`
+}
+
+type EmbeddedStruct struct {
+	DefField string
+}
+
+type EmbeddedField struct {
+	EmbeddedStruct
+}
+
+func (*EmbeddedField) TemplateText() string {
+	return `{{ .DefField }}`
+}
+
 type DefinedField struct {
 	DefField string
 }

@@ -1,6 +1,7 @@
 package tmpl
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html/template"
@@ -17,11 +18,11 @@ import (
 // be accessed in the second pass. The second pass is the actual analysis
 // of the template definition tree where errors and warnings are added.
 type AnalysisHelper struct {
+	ctx context.Context
 	//pre-analysis data
 	// treeSet is a map of all templates defined in the TemplateProvider,
 	// as well as all of its children.
 	treeSet map[string]*parse.Tree
-
 	// fieldTree is a tree structure of all struct fields in the TemplateProvider,
 	// as well as all of its children.
 	fieldTree *FieldNode
@@ -65,6 +66,14 @@ func (h *AnalysisHelper) AddWarning(node parse.Node, err string) {
 
 func (h *AnalysisHelper) AddFunc(name string, fn interface{}) {
 	h.funcMap[name] = fn
+}
+
+func (h *AnalysisHelper) Context() context.Context {
+	return h.ctx
+}
+
+func (h *AnalysisHelper) WithContext(ctx context.Context) {
+	h.ctx = ctx
 }
 
 // ParseOptions controls the behavior of the templateProvider parser used by Analyze.
@@ -113,6 +122,7 @@ func Analyze(tp TemplateProvider, opts ParseOptions, analyzers []Analyzer) (*Ana
 
 func createHelper(tp TemplateProvider, opts ParseOptions) (helper *AnalysisHelper, err error) {
 	helper = &AnalysisHelper{
+		ctx:     context.Background(),
 		treeSet: make(map[string]*parse.Tree),
 
 		errors:   make([]string, 0),

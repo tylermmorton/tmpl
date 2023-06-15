@@ -1,1 +1,2 @@
 vendor/
+*_gen_test.go

@@ -72,21 +72,32 @@ func Test_Compile(t *testing.T) {
 				"Hello World",
 			},
 		},
-		"Supports usage of {{ range }} statements": {
-			templateProvider: &TestTemplate{
-				Title: "Test",
-				Scripts: []ScriptComponent{
-					{Source: "script1.js"},
-					{Source: "script2.js"},
-				},
-				Content: &TextComponent{Text: "Hello World"},
-			},
+		"Supports usage of {{ range }} statements over string types": {
+			templateProvider: &DefinedRange{DefList: []string{"Hello", "World"}},
 			expectRenderOutput: []string{
-				"Test",
-				"Hello World",
-				"<script src=\"script1.js\"></script>",
-				"<script src=\"script2.js\"></script>",
+				"Hello",
+				"World",
 			},
+		},
+		"Supports usage of {{ range }} statements over struct types": {
+			templateProvider: &StructRange{DefList: []struct {
+				DefField string
+			}{
+				{DefField: "Hello"},
+				{DefField: "World"},
+			}},
+			expectRenderOutput: []string{
+				"Hello",
+				"World",
+			},
+		},
+
+		// template nesting tests
+		"Supports embedded struct fields": {
+			templateProvider: &EmbeddedField{
+				EmbeddedStruct: EmbeddedStruct{DefField: "Hello World"},
+			},
+			expectRenderOutput: []string{"Hello World"},
 		},
 
 		// these are test cases for the compiler's built-in analyzers

@@ -8,6 +8,10 @@ type Visitor = func(parse.Node)
 // Traverse is a depth-first traversal utility
 // for all nodes in a text/template/parse.Tree
 func Traverse(cur parse.Node, visitors ...Visitor) {
+	for _, visitor := range visitors {
+		visitor(cur)
+	}
+
 	switch node := cur.(type) {
 	case *parse.ActionNode:
 		if node.Pipe != nil {
@@ -69,9 +73,5 @@ func Traverse(cur parse.Node, visitors ...Visitor) {
 	case *parse.VariableNode:
 	case *parse.WithNode:
 		Traverse(&node.BranchNode, visitors...)
-	}
-
-	for _, visitor := range visitors {
-		visitor(cur)
 	}
 }

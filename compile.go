@@ -110,17 +110,21 @@ func Compile[T TemplateProvider](tp T, opts ...CompilerOption) (Template[T], err
 		mu: &sync.RWMutex{},
 	}
 
-	doCompile := func() error {
-		t, err := compile(tp, c.parseOpts, c.analyzers...)
+	doCompile := func() (err error) {
+		var (
+			t *template.Template
+		)
+
+		t, err = compile(tp, c.parseOpts, c.analyzers...)
 		if err != nil {
-			return err
+			return
 		}
 
 		m.mu.Lock()
 		m.template = t
 		m.mu.Unlock()
 
-		return nil
+		return
 	}
 
 	err := doCompile()

@@ -56,7 +56,12 @@ func createFieldTree(structOrPtr interface{}) (root *FieldNode, err error) {
 		Children: make([]*FieldNode, 0),
 	}
 
+	if val.Kind() != reflect.Struct {
+		return
+	}
+
 	for i := 0; i < val.NumField(); i++ {
+
 		iface := zeroValueInterfaceFromField(val.Field(i))
 		if iface != nil {
 			node, err := createFieldTree(iface)
@@ -67,13 +72,34 @@ func createFieldTree(structOrPtr interface{}) (root *FieldNode, err error) {
 			node.Parent = root
 			node.Depth = root.Depth + 1
 			root.Children = append(root.Children, node)
-		} else {
+
+			//support embedded struct fields
+			if node.StructField.Anonymous {
+				for _, child := range node.Children {
+					child.Parent = root
+					child.Depth = root.Depth + 1
+					root.Children = append(root.Children, child)
+				}
+			}
+		} else if val.Field(i).Kind() == reflect.Struct {
 			node := &FieldNode{
 				Value:       val.Field(i),
 				StructField: val.Type().Field(i),
 				Depth:       root.Depth + 1,
 				Parent:      root,
 				Children:    make([]*FieldNode, 0),
+			}
+			root.Children = append(root.Children, node)
+		} else {
+			node := &FieldNode{
+				Value: val.Field(i),
+				Depth: root.Depth + 1,
+				StructField: reflect.StructField{
+					Name: val.Type().Field(i).Name,
+					Type: val.Type().Field(i).Type,
+				},
+				Parent:   root,
+				Children: make([]*FieldNode, 0),
 			}
 			root.Children = append(root.Children, node)
 		}
