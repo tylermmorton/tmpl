@@ -101,9 +101,12 @@ var bindCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(bindCmd)
 
-	Mode = bindCmd.Flags().String("mode", BinderTypeFile, "set the binder mode (embed|file)")
 	Outfile = bindCmd.Flags().String("outfile", "tmpl.gen.go", "set the output go file for template bindings")
 	Watch = bindCmd.Flags().Bool("watch", false, "enable generation of `TemplateWatcher` implementations")
+	Mode = bindCmd.Flags().String("mode", BinderTypeFile, "set the binder mode (embed|file)")
+	if mode, ok := os.LookupEnv("TMPL_BIND_MODE"); Mode == nil && ok {
+		Mode = &mode
+	}
 }
 
 func analyzeGoFile(goFile string) []TemplateBinding {
