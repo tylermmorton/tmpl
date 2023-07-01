@@ -114,3 +114,37 @@ type AnyTypeIf struct {
 func (*AnyTypeIf) TemplateText() string {
 	return `{{ if .DefIf }}{{ end }}`
 }
+
+// Tests multiple levels of embedded templates
+
+type LevelTwoEmbed struct {
+	DefField string
+}
+
+func (*LevelTwoEmbed) TemplateText() string {
+	return `{{ .DefField }}`
+}
+
+type LevelOneEmbed struct {
+	LevelTwoEmbed `tmpl:"two"`
+}
+
+func (*LevelOneEmbed) TemplateText() string {
+	return `{{ template "two" .}}`
+}
+
+type MultiLevelEmbeds struct {
+	LevelOneEmbed `tmpl:"one"`
+}
+
+func (*MultiLevelEmbeds) TemplateText() string {
+	return `{{ template "one" . }}`
+}
+
+type NoPipeline struct {
+	LevelOneEmbed `tmpl:"one"`
+}
+
+func (*NoPipeline) TemplateText() string {
+	return `{{ template "one" }}`
+}

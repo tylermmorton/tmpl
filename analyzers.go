@@ -93,6 +93,13 @@ var staticTyping Analyzer = func(helper *AnalysisHelper) AnalyzerFunc {
 		case *parse.TemplateNode:
 			if !helper.IsDefinedTemplate(typ.Name) {
 				helper.AddError(node, fmt.Sprintf("template %q is not provided by struct %T or any of its embedded structs", typ.Name, val.Interface()))
+			} else if typ.Pipe == nil {
+				helper.AddError(node, fmt.Sprintf("template %q is not invoked with a pipeline", typ.Name))
+			} else if len(typ.Pipe.Cmds) == 1 {
+				// TODO: here we can check the type of the pipeline
+				//   if the command is a DotNode, check the type of the struct for any embedded fields
+				//   if the command is a FieldNode, check the type of the field and mark it as visited
+				_ = typ.Pipe.Cmds[0]
 			}
 
 			break

@@ -99,11 +99,27 @@ func Test_Compile(t *testing.T) {
 			},
 			expectRenderOutput: []string{"Hello World"},
 		},
+		"Supports multiple levels of embedded TemplateProviders": {
+			templateProvider: &MultiLevelEmbeds{
+				LevelOneEmbed: LevelOneEmbed{
+					LevelTwoEmbed: LevelTwoEmbed{
+						DefField: "Hello World",
+					},
+				},
+			},
+			expectRenderOutput: []string{"Hello World"},
+		},
 
 		// these are test cases for the compiler's built-in analyzers
 		"Catches usage of {{ template }} statements containing undefined template names": {
 			templateProvider:    &UndefinedTemplate{},
 			expectCompileErrMsg: "template \"undefined\" is not provided",
+		},
+		"Catches usage of {{ template }} statements without a pipeline": {
+			templateProvider: &NoPipeline{
+				LevelOneEmbed: LevelOneEmbed{},
+			},
+			expectCompileErrMsg: "template \"one\" is not invoked with a pipeline",
 		},
 		"Catches usage of {{ if }} statements containing non-bool types": {
 			templateProvider:    &AnyTypeIf{DefIf: 0},

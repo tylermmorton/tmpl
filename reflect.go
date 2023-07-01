@@ -139,7 +139,7 @@ func recurseFieldsImplementing[T interface{}](structOrPtr interface{}, fn func(v
 				return err
 			}
 
-			err = recurseFieldsImplementing[T](reflect.ValueOf(t).Elem(), fn)
+			err = recurseFieldsImplementing[T](t, fn)
 			if err != nil {
 				return err
 			}
