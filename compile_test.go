@@ -34,6 +34,7 @@ func (*TestTemplate) TemplateText() string {
 func Test_Compile(t *testing.T) {
 	testCases := map[string]struct {
 		templateProvider TemplateProvider
+		renderOptions    []RenderOption
 
 		expectRenderOutput []string
 		expectRenderErrMsg string
@@ -110,6 +111,49 @@ func Test_Compile(t *testing.T) {
 			expectRenderOutput: []string{"Hello World"},
 		},
 
+		// layout & outlet tests (RenderOption tests)
+		"Supports usage of WithTarget and WithName when rendering templates": {
+			templateProvider: &Outlet{
+				Layout:  Layout{},
+				Content: "Hello World",
+			},
+			renderOptions: []RenderOption{
+				WithName("outlet"),
+				WithTarget("layout"),
+			},
+			expectRenderOutput: []string{"<span>Hello World</span>"},
+		},
+		"Supports usage of WithTarget and WithName when rendering templates with nested outlets": {
+			templateProvider: &OutletWithNested{
+				Layout: Layout{},
+				LevelOneEmbed: LevelOneEmbed{
+					LevelTwoEmbed: LevelTwoEmbed{
+						DefField: "Hello World",
+					},
+				},
+			},
+			renderOptions: []RenderOption{
+				WithName("outlet"),
+				WithTarget("layout"),
+			},
+			expectRenderOutput: []string{"<span>Hello World</span>"},
+		},
+		"Supports usage of WithTarget and WithName when rendering layouts with nested templates": {
+			templateProvider: &OutletWithNestedLayout{
+				LayoutWithNested: LayoutWithNested{
+					DefinedField: DefinedField{
+						DefField: "Hi",
+					},
+				},
+				Content: "Hello World",
+			},
+			renderOptions: []RenderOption{
+				WithName("outlet"),
+				WithTarget("layout"),
+			},
+			expectRenderOutput: []string{"<title>Hi</title>\\n<span>Hello World</span>"},
+		},
+
 		// these are test cases for the compiler's built-in analyzers
 		"Catches usage of {{ template }} statements containing undefined template names": {
 			templateProvider:    &UndefinedTemplate{},
@@ -157,7 +201,7 @@ func Test_Compile(t *testing.T) {
 			}
 
 			buf := bytes.Buffer{}
-			err = tmpl.Render(&buf, tc.templateProvider)
+			err = tmpl.Render(&buf, tc.templateProvider, tc.renderOptions...)
 			if err != nil {
 				if len(tc.expectRenderErrMsg) == 0 {
 					t.Fatal(err)

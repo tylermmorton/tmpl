@@ -18,7 +18,7 @@ type RenderOption func(p *RenderProcess)
 // to the Template under the given name, effectively aliasing the Template.
 func WithName(name string) RenderOption {
 	return func(p *RenderProcess) {
-		template.Must(p.Template.AddParseTree(name, p.Template.Tree.Copy()))
+		p.Template = template.Must(p.Template.AddParseTree(name, p.Template.Tree.Copy()))
 	}
 }
 

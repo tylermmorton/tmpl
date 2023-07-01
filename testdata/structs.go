@@ -148,3 +148,46 @@ type NoPipeline struct {
 func (*NoPipeline) TemplateText() string {
 	return `{{ template "one" }}`
 }
+
+type Outlet struct {
+	Layout `tmpl:"layout"`
+
+	Content string
+}
+
+func (*Outlet) TemplateText() string {
+	return `{{ .Content }}`
+}
+
+type Layout struct{}
+
+func (*Layout) TemplateText() string {
+	return `<span>{{ template "outlet" . }}</span>`
+}
+
+type OutletWithNested struct {
+	Layout        `tmpl:"layout"`
+	LevelOneEmbed `tmpl:"one"`
+}
+
+func (*OutletWithNested) TemplateText() string {
+	return `{{ template "one" . }}`
+}
+
+type LayoutWithNested struct {
+	DefinedField `tmpl:"nested"`
+}
+
+func (*LayoutWithNested) TemplateText() string {
+	return `<title>{{ template "nested" . }}</title>\n<span>{{template "outlet" . }}</span>`
+}
+
+type OutletWithNestedLayout struct {
+	LayoutWithNested `tmpl:"layout"`
+
+	Content string
+}
+
+func (*OutletWithNestedLayout) TemplateText() string {
+	return `{{ .Content }}`
+}

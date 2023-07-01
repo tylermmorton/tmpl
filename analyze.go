@@ -43,6 +43,10 @@ type AnalysisHelper struct {
 // IsDefinedTemplate returns true if the given template name is defined in the
 // analysis target via {{define}}, or defined by any of its embedded templates.
 func (h *AnalysisHelper) IsDefinedTemplate(name string) bool {
+	if name == "outlet" {
+		return true
+	}
+
 	_, ok := h.treeSet[name]
 	return ok
 }
