@@ -66,9 +66,6 @@ func staticTypingRecursive(prefix string, val reflect.Value, node parse.Node, he
 						for i, arg := range cmd.Args[1:] {
 							switch argTyp := arg.(type) {
 							case *parse.FieldNode:
-								if isVisited(helper.ctx, argTyp) {
-									break
-								}
 								typ := prefix + argTyp.String()
 								field := helper.GetDefinedField(typ)
 								if field == nil {
