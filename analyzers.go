@@ -37,8 +37,8 @@ func staticTypingRecursive(prefix string, val reflect.Value, node parse.Node, he
 	switch nodeTyp := node.(type) {
 	case *parse.IfNode:
 		for _, cmd := range nodeTyp.Pipe.Cmds {
-			for _, arg := range cmd.Args {
-				switch argTyp := arg.(type) {
+			if len(cmd.Args) == 1 {
+				switch argTyp := cmd.Args[0].(type) {
 				case *parse.FieldNode:
 					if isVisited(helper.ctx, argTyp) {
 						break
@@ -51,6 +51,56 @@ func staticTypingRecursive(prefix string, val reflect.Value, node parse.Node, he
 						helper.AddError(node, fmt.Sprintf("field %q is not type bool: got %s", typ, kind))
 					}
 					helper.WithContext(setVisited(helper.Context(), argTyp))
+				}
+			} else {
+				// this is a pipeline like {{ if eq .Arg "foo" }}
+				if arg, ok := cmd.Args[0].(*parse.IdentifierNode); ok {
+					switch arg.Ident {
+					// TODO: generalize this to all function calls instead of just builtins
+					case "eq", "ne", "lt", "le", "gt", "ge":
+						if len(cmd.Args) != 3 {
+							helper.AddError(node, fmt.Sprintf("invalid number of arguments for %q: expected 3, got %d", arg.Ident, len(cmd.Args)))
+						}
+
+						kind := make([]reflect.Kind, 2)
+						for i, arg := range cmd.Args[1:] {
+							switch argTyp := arg.(type) {
+							case *parse.FieldNode:
+								if isVisited(helper.ctx, argTyp) {
+									break
+								}
+								typ := prefix + argTyp.String()
+								field := helper.GetDefinedField(typ)
+								if field == nil {
+									helper.AddError(node, fmt.Sprintf("field %q not defined in struct %T", typ, val.Interface()))
+								} else {
+									kind[i] = field.GetKind()
+								}
+								helper.WithContext(setVisited(helper.Context(), argTyp))
+								break
+
+							case *parse.StringNode:
+								kind[i] = reflect.String
+								break
+
+							case *parse.NumberNode:
+								if argTyp.IsInt {
+									kind[i] = reflect.Int
+								} else if argTyp.IsFloat {
+									kind[i] = reflect.Float32 // TODO: will this break on Float64?
+								} else if argTyp.IsUint {
+									kind[i] = reflect.Uint
+								} else if argTyp.IsComplex {
+									kind[i] = reflect.Complex64
+								}
+							}
+						}
+
+						// check if arg1 and arg2 are comparable
+						if kind[0] != kind[1] {
+							helper.AddError(node, fmt.Sprintf("incompatible types for %q: %s and %s", arg.Ident, kind[0], kind[1]))
+						}
+					}
 				}
 			}
 		}

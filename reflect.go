@@ -24,6 +24,14 @@ func (node *FieldNode) IsKind(kind reflect.Kind) (reflect.Kind, bool) {
 	}
 }
 
+func (node *FieldNode) GetKind() reflect.Kind {
+	if node.StructField.Type.Kind() == reflect.Interface {
+		return node.Value.Kind()
+	} else {
+		return node.StructField.Type.Kind()
+	}
+}
+
 func (node *FieldNode) FindPath(path []string) *FieldNode {
 	if len(path) == 0 {
 		return node

@@ -127,6 +127,15 @@ func (*AnyTypeIf) TemplateText() string {
 	return `{{ if .DefIf }}{{ end }}`
 }
 
+type PipelineIf struct {
+	DefInt  int
+	Message string
+}
+
+func (*PipelineIf) TemplateText() string {
+	return `{{ if eq .DefInt 1 }}{{.Message}}{{ end }}`
+}
+
 // Tests multiple levels of embedded templates
 
 type LevelTwoEmbed struct {

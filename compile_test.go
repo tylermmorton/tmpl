@@ -67,8 +67,17 @@ func Test_Compile(t *testing.T) {
 				"<form id=\"defineForm\">",
 			},
 		},
-		"Supports usage of {{ if }} statements": {
+		"Supports usage of {{ if }} statements with bare fields": {
 			templateProvider: &DefinedIf{DefIf: true, Message: "Hello World"},
+			expectRenderOutput: []string{
+				"Hello World",
+			},
+		},
+		"Supports usage of builtin equality operations in {{ if eq .Field 1 }} pipelines": {
+			templateProvider: &PipelineIf{
+				DefInt:  1,
+				Message: "Hello World",
+			},
 			expectRenderOutput: []string{
 				"Hello World",
 			},
