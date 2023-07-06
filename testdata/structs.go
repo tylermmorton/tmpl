@@ -50,6 +50,18 @@ func (*StructRange) TemplateText() string {
 	return `{{ range .DefList }}{{ .DefField }}{{ end }}`
 }
 
+type NamedStruct struct {
+	DefField string
+}
+
+type NamedStructRange struct {
+	NamedStructs []NamedStruct
+}
+
+func (*NamedStructRange) TemplateText() string {
+	return `{{ range .NamedStructs }}{{ .DefField }}{{ end }}`
+}
+
 type EmbeddedStruct struct {
 	DefField string
 }
@@ -190,4 +202,28 @@ type OutletWithNestedLayout struct {
 
 func (*OutletWithNestedLayout) TemplateText() string {
 	return `{{ .Content }}`
+}
+
+type IfWithinRange struct {
+	DefList []DefinedIf
+}
+
+func (*IfWithinRange) TemplateText() string {
+	return `{{ range .DefList }}{{ if .DefIf }}{{ .Message }}{{ end }}{{ end }}`
+}
+
+type StructTwo struct {
+	DefField string
+}
+
+type StructOne struct {
+	ListTwo []StructTwo
+}
+
+type StructRangeWithinRange struct {
+	ListOne []StructOne
+}
+
+func (*StructRangeWithinRange) TemplateText() string {
+	return `{{ range .ListOne }}{{ range .ListTwo }}{{ .DefField }}{{ end }}{{ end }}`
 }

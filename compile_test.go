@@ -80,7 +80,7 @@ func Test_Compile(t *testing.T) {
 				"World",
 			},
 		},
-		"Supports usage of {{ range }} statements over struct types": {
+		"Supports usage of {{ range }} statements over anonymous struct types": {
 			templateProvider: &StructRange{DefList: []struct {
 				DefField string
 			}{
@@ -92,7 +92,47 @@ func Test_Compile(t *testing.T) {
 				"World",
 			},
 		},
+		"Supports usage of {{ range }} statements over named struct types": {
+			templateProvider: &NamedStructRange{NamedStructs: []NamedStruct{
+				{DefField: "Hello"},
+				{DefField: "World"},
+			}},
+			expectRenderOutput: []string{
+				"Hello",
+				"World",
+			},
+		},
 
+		"Supports usage of {{ if }} statements within {{ range }} bodies": {
+			templateProvider: &IfWithinRange{
+				DefList: []DefinedIf{
+					{DefIf: true, Message: "Hello"},
+				},
+			},
+			expectRenderOutput: []string{
+				"Hello",
+			},
+		},
+		"Supports usage of {{ range }} statements within {{ range }} bodies": {
+			templateProvider: &StructRangeWithinRange{
+				ListOne: []StructOne{
+					{
+						ListTwo: []StructTwo{
+							{DefField: "Hello"},
+						},
+					},
+					{
+						ListTwo: []StructTwo{
+							{DefField: "World"},
+						},
+					},
+				},
+			},
+			expectRenderOutput: []string{
+				"Hello",
+				"World",
+			},
+		},
 		// template nesting tests
 		"Supports embedded struct fields": {
 			templateProvider: &EmbeddedField{
