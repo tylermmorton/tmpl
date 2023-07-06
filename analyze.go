@@ -61,11 +61,12 @@ func (h *AnalysisHelper) FuncMap() template.FuncMap {
 }
 
 func (h *AnalysisHelper) AddError(node parse.Node, err string) {
-	h.errors = append(h.errors, err)
+	// TODO: to get a useful error message, convert byte position (offset) to line numbers
+	h.errors = append(h.errors, fmt.Sprintf("%v: %s", node.Position(), err))
 }
 
 func (h *AnalysisHelper) AddWarning(node parse.Node, err string) {
-	h.warnings = append(h.warnings, err)
+	h.warnings = append(h.warnings, fmt.Sprintf("%v: %s", node.Position(), err))
 }
 
 func (h *AnalysisHelper) AddFunc(name string, fn interface{}) {

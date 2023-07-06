@@ -55,6 +55,10 @@ func staticTypingRecursive(prefix string, val reflect.Value, node parse.Node, he
 			} else {
 				// this is a pipeline like {{ if eq .Arg "foo" }}
 				if arg, ok := cmd.Args[0].(*parse.IdentifierNode); ok {
+					if isVisited(helper.ctx, arg) {
+						continue
+					}
+
 					switch arg.Ident {
 					// TODO: generalize this to all function calls instead of just builtins
 					case "eq", "ne", "lt", "le", "gt", "ge":
@@ -68,12 +72,12 @@ func staticTypingRecursive(prefix string, val reflect.Value, node parse.Node, he
 							case *parse.FieldNode:
 								typ := prefix + argTyp.String()
 								field := helper.GetDefinedField(typ)
-								if field == nil {
+								if field == nil && !isVisited(helper.ctx, argTyp) {
 									helper.AddError(node, fmt.Sprintf("field %q not defined in struct %T", typ, val.Interface()))
-								} else {
+									helper.WithContext(setVisited(helper.Context(), argTyp))
+								} else if field != nil {
 									kind[i] = field.GetKind()
 								}
-								helper.WithContext(setVisited(helper.Context(), argTyp))
 								break
 
 							case *parse.StringNode:
@@ -98,6 +102,8 @@ func staticTypingRecursive(prefix string, val reflect.Value, node parse.Node, he
 							helper.AddError(node, fmt.Sprintf("incompatible types for %q: %s and %s", arg.Ident, kind[0], kind[1]))
 						}
 					}
+
+					helper.WithContext(setVisited(helper.Context(), arg))
 				}
 			}
 		}
