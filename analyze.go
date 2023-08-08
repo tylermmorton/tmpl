@@ -10,6 +10,8 @@ import (
 	"text/template/parse"
 )
 
+type FuncMap = template.FuncMap
+
 // AnalysisHelper is a struct that contains all the data collected
 // during an analysis of a TemplateProvider.
 //
@@ -56,7 +58,7 @@ func (h *AnalysisHelper) GetDefinedField(name string) *FieldNode {
 	return h.fieldTree.FindPath(strings.Split(name, "."))
 }
 
-func (h *AnalysisHelper) FuncMap() template.FuncMap {
+func (h *AnalysisHelper) FuncMap() FuncMap {
 	return h.funcMap
 }
 
@@ -70,6 +72,9 @@ func (h *AnalysisHelper) AddWarning(node parse.Node, err string) {
 }
 
 func (h *AnalysisHelper) AddFunc(name string, fn interface{}) {
+	if h.funcMap == nil {
+		h.funcMap = make(FuncMap)
+	}
 	h.funcMap[name] = fn
 }
 
@@ -83,6 +88,7 @@ func (h *AnalysisHelper) WithContext(ctx context.Context) {
 
 // ParseOptions controls the behavior of the templateProvider parser used by Analyze.
 type ParseOptions struct {
+	Funcs      FuncMap
 	LeftDelim  string
 	RightDelim string
 }
@@ -132,7 +138,7 @@ func createHelper(tp TemplateProvider, opts ParseOptions) (helper *AnalysisHelpe
 
 		errors:   make([]string, 0),
 		warnings: make([]string, 0),
-		funcMap:  make(template.FuncMap),
+		funcMap:  opts.Funcs,
 	}
 
 	if len(opts.LeftDelim) == 0 || len(opts.RightDelim) == 0 {

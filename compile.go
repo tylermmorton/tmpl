@@ -18,6 +18,18 @@ type CompilerOptions struct {
 // CompilerOption is a function that can be used to modify the CompilerOptions
 type CompilerOption func(opts *CompilerOptions)
 
+func UseFuncs(funcs FuncMap) CompilerOption {
+	return func(opts *CompilerOptions) {
+		if opts.parseOpts.Funcs == nil {
+			opts.parseOpts.Funcs = funcs
+		} else {
+			for k, v := range funcs {
+				opts.parseOpts.Funcs[k] = v
+			}
+		}
+	}
+}
+
 func UseAnalyzers(analyzers ...Analyzer) CompilerOption {
 	return func(opts *CompilerOptions) {
 		opts.analyzers = append(opts.analyzers, analyzers...)
