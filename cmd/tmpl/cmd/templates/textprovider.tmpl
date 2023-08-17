@@ -1,6 +1,6 @@
 //go:embed {{ .FileName }}
-var {{ .StructType | toCamelCase }}TmplText string
+var {{ .StructType | toCamelCase }}TmplFS embed.FS
 
 func (t *{{ .StructType }}) TemplateText() string {
-  return {{ .StructType | toCamelCase }}TmplText
+  return _tmpl({{ .StructType | toCamelCase }}TmplFS, ".")
 }

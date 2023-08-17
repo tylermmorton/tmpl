@@ -11,7 +11,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"text/template"
 
@@ -21,8 +20,9 @@ import (
 var (
 	Outfile *string
 	Mode    *string
-	Watch   *bool
 
+	//go:embed templates/_tmpl.tmpl
+	tmplHelperTmplText string
 	//go:embed templates/fileprovider.tmpl
 	fileProviderTmplText string
 	//go:embed templates/textprovider.tmpl
@@ -42,7 +42,7 @@ type TemplateBinding struct {
 	Args       []string
 	BinderType string
 	FileName   string
-	FilePath   string
+	FilePaths  []string
 	StructType string
 	UseWatcher bool
 }
@@ -102,7 +102,6 @@ func init() {
 	rootCmd.AddCommand(bindCmd)
 
 	Outfile = bindCmd.Flags().String("outfile", "tmpl.gen.go", "set the output go file for template bindings")
-	Watch = bindCmd.Flags().Bool("watch", false, "enable generation of `TemplateWatcher` implementations")
 	Mode = bindCmd.Flags().String("mode", BinderTypeFile, "set the binder mode (embed|file)")
 	if mode, ok := os.LookupEnv("TMPL_BIND_MODE"); Mode == nil && ok {
 		Mode = &mode
@@ -138,32 +137,18 @@ func analyzeGoFile(goFile string) []TemplateBinding {
 							if ts, ok := decl.Specs[0].(*ast.TypeSpec); ok {
 								// TODO: refactor to separate function
 								s := strings.Split(comment.Text, " ")
+								pattern := filepath.Join(filepath.Dir(goFile), s[1])
+								matches, err := filepath.Glob(pattern)
+								if err != nil {
+									panic(fmt.Sprintf("failed to glob pattern '%s': %v", pattern, err))
+								}
+
 								b := TemplateBinding{
 									Args:       s[2:],
 									FileName:   s[1],
-									FilePath:   filepath.Join(filepath.Dir(goFile), s[1]),
+									FilePaths:  matches,
 									StructType: ts.Name.Name,
 									BinderType: *Mode,
-									UseWatcher: *Watch,
-								}
-
-								for _, flag := range s[2:] {
-									if strings.Contains(flag, "=") {
-										f := strings.Split(flag, "=")[0]
-										v := strings.Split(flag, "=")[1]
-
-										switch f {
-										case "watch":
-											w, err := strconv.ParseBool(v)
-											if err != nil {
-												panic(fmt.Sprintf("failed to parse --watch value `%s` for %s", v, b.StructType))
-											}
-											b.UseWatcher = w
-										}
-									}
-									if flag == "--watch" {
-										b.UseWatcher = true
-									}
 								}
 
 								res = append(res, b)
@@ -184,20 +169,21 @@ func writeBinderFile(outfile string, packageName string, bindings []TemplateBind
 	for _, binding := range bindings {
 		switch binding.BinderType {
 		case BinderTypeEmbed:
-			imports["embed"] = "_"
+			imports["embed"] = ""
+			imports["path/filepath"] = ""
+			imports["strings"] = ""
 		case BinderTypeFile:
+			imports["bytes"] = ""
 			imports["os"] = ""
-			if binding.UseWatcher {
-				imports["fmt"] = ""
-				imports["github.com/fsnotify/fsnotify"] = ""
-			}
 		}
 	}
 
 	log.Printf("Generating '%s'", outfile)
 
 	b := bytes.Buffer{}
-	b.WriteString(fmt.Sprintf("package %s\n", packageName))
+	b.WriteString(fmt.Sprintf("package %s\n\n", packageName))
+
+	b.WriteString("// /!\\ THIS FILE IS GENERATED DO NOT EDIT /!\\\n\n")
 
 	b.WriteString("import (\n")
 	for k, alias := range imports {
@@ -205,8 +191,13 @@ func writeBinderFile(outfile string, packageName string, bindings []TemplateBind
 	}
 	b.WriteString(")\n")
 
+	if *Mode == BinderTypeEmbed {
+		b.WriteString(tmplHelperTmplText)
+		b.WriteString("\n")
+	}
+
 	for _, binding := range bindings {
-		log.Printf("- write binder for %s %s", binding.FileName, strings.Join(binding.Args, " "))
+		log.Printf("- write binder for %s %s", binding.StructType, strings.Join(binding.Args, " "))
 
 		t := template.New("binder").Funcs(template.FuncMap{
 			"toCamelCase": toCamelCase,
