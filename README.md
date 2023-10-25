@@ -12,13 +12,9 @@ tmpl is a wrapper around Go's `html/template` package that aims to solve some of
 
 *Roadmap & Idea List*
 
-- Load from disk in development with hot reloading, embed in binary for production
-- Documentation on how to use `tmpl.Analyze` for parse tree traversal and static analysis of templates
-- Automatic generation of [GoLand `{{ gotype: }}` annotations](https://www.jetbrains.com/help/go/integration-with-go-templates.html) when using the `tmpl` CLI
-- Improve the compiler API, add portability and watcher callbacks
 - Parsing and static analysis of the html in a template
-- Integrate template & html linting tools into the `tmpl` CLI
-
+- Automatic generation of [GoLand `{{ gotype: }}` annotations](https://www.jetbrains.com/help/go/integration-with-go-templates.html) when using the `tmpl` CLI
+- Documentation on how to use `tmpl.Analyze` for parse tree traversal and static analysis of templates
 
 ##  🧰 Installation
 ```bash
@@ -149,7 +145,17 @@ If any of your template's syntax were to be invalid, the compiler will `panic` o
 
 The compiler returns a managed `tmpl.Template` instance. These templates are safe to use from multiple Go routines.
 
-Execute your template by calling the generic function `Render`:
+### Rendering
+
+After compilation, you may execute your template by calling one of the generic render functions.
+
+```go
+type Template[T TemplateProvider] interface {
+	Render(w io.Writer, data T, opts ...RenderOption) error
+	RenderToChan(ch chan string, data T, opts ...RenderOption) error
+	RenderToString(data T, opts ...RenderOption) (string, error)
+}
+```
 
 ```go
 var (
@@ -169,6 +175,12 @@ func main() {
 	
     fmt.Println(buf.String())
 }
+```
+
+You can also pass additional options to the render function to customize the behavior of the template.
+
+```go
+type RenderOption func(p *RenderProcess)
 ```
 
 ### Template Nesting
@@ -248,56 +260,20 @@ func main() {
 }
 ```
 
-### `TemplateWatcher`
+### Targeting
 
-It's common to want to be able to see changes to a template without restarting the application. This is called "hot reloading."
+Sometimes you may want to render a nested template. To do this, use the `RenderOption` `WithTarget` in any of the render functions: 
 
-The `TemplateWatcher` interface can be used to signal to the tmpl compiler that a managed template should be reloaded.
 ```go
-type TemplateWatcher interface {
-    Watch(signal chan struct{})
-}
-```
-
-A bit contrived, but this is an example of reloading a template every 5 seconds by sending a signal over the given channel. `Watch` is called in a new goroutine managed by the compiler so don't worry about blocking the thread: 
-```go
-func (*LoginTemplate) Watch(signal chan struct{}) {
-    for {
-        signal <- struct{}{}
-        time.Sleep(time.Second * 5)
-    }
-}
-```
- 
-Note, a drawback of embeddinig templates with Go's `embed` package is that it's impossible to achieve hot reload functionality. 
-
-You'll need to re-implement `TemplateProvider` to load your templates from disk:
-```go
-import (
-    "os"
-)
-
-func (*LoginPage) TemplateText() string {
-    byt, err := os.ReadFile("~/abs/path/to/login.tmpl.html")
+func main() {
+    buf := bytes.Buffer{}
+    err := LoginTemplate.Render(&buf, &LoginPage{
+        Title:    "Login",
+        Username: "",
+        Password: "",
+    }, tmpl.WithTarget("head"))
     if err != nil {
         panic(err)
     }
-    return string(byt)
-}
-```
-
-If you're using `tmpl bind` utility, pass the `--watch` flag to enable the generation of `TemlateProvider` & `TemplateWatcher` implementations automatically.
-
-This can be done at a package level with `//go:generate` annotations or an easy way to generate watchers for all packages:
-
-```shell
-tmpl bind ./... --watch
-```
-
-The `//tmpl:bind` annotation also supports the `--watch` flag and it takes precedence over the value passed to the `tmpl bind` cli
-```go
-//tmpl:bind login.tmpl.html --watch
-type LoginPage struct {
-    ...
 }
 ```
