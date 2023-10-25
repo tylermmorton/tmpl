@@ -214,7 +214,7 @@ func Test_Compile(t *testing.T) {
 				DefList: []string{"Hello", "World"},
 				DefStr:  "Hello",
 			},
-			expectRenderOutput: []string{"Hello"},
+			expectRenderOutput: []string{"PASS", "FAIL"},
 		},
 
 		// these are test cases for the compiler's built-in analyzers

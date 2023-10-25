@@ -252,5 +252,5 @@ type DollarSignWithinIfWithinRange struct {
 }
 
 func (*DollarSignWithinIfWithinRange) TemplateText() string {
-	return `{{ range .DefList }}{{ if eq . $.DefStr }}.{{ end }}{{ end }}`
+	return `{{ range .DefList }}{{ if eq . $.DefStr }}PASS{{else}}FAIL{{ end }}{{ end }}`
 }
