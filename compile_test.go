@@ -202,6 +202,20 @@ func Test_Compile(t *testing.T) {
 			},
 			expectRenderOutput: []string{"<title>Hi</title>\\n<span>Hello World</span>"},
 		},
+		"Supports usage of $ dot reference within range scopes": {
+			templateProvider: &DollarSignWithinRange{
+				DefList: []string{"1", "2"},
+				DefStr:  "Hello",
+			},
+			expectRenderOutput: []string{"HelloHello"},
+		},
+		"Supports usage of $ dot reference within an if within range scopes": {
+			templateProvider: &DollarSignWithinIfWithinRange{
+				DefList: []string{"Hello", "World"},
+				DefStr:  "Hello",
+			},
+			expectRenderOutput: []string{"Hello"},
+		},
 
 		// these are test cases for the compiler's built-in analyzers
 		"Catches usage of {{ template }} statements containing undefined template names": {

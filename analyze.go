@@ -55,6 +55,9 @@ func (h *AnalysisHelper) IsDefinedTemplate(name string) bool {
 
 func (h *AnalysisHelper) GetDefinedField(name string) *FieldNode {
 	name = strings.TrimPrefix(name, ".")
+	if len(name) == 0 {
+		return h.fieldTree
+	}
 	return h.fieldTree.FindPath(strings.Split(name, "."))
 }
 

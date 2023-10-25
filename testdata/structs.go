@@ -236,3 +236,21 @@ type StructRangeWithinRange struct {
 func (*StructRangeWithinRange) TemplateText() string {
 	return `{{ range .ListOne }}{{ range .ListTwo }}{{ .DefField }}{{ end }}{{ end }}`
 }
+
+type DollarSignWithinRange struct {
+	DefStr  string
+	DefList []string
+}
+
+func (*DollarSignWithinRange) TemplateText() string {
+	return `{{ range .DefList }}{{ $.DefStr }}{{ end }}`
+}
+
+type DollarSignWithinIfWithinRange struct {
+	DefStr  string
+	DefList []string
+}
+
+func (*DollarSignWithinIfWithinRange) TemplateText() string {
+	return `{{ range .DefList }}{{ if eq . $.DefStr }}.{{ end }}{{ end }}`
+}

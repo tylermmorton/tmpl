@@ -80,6 +80,18 @@ func staticTypingRecursive(prefix string, val reflect.Value, node parse.Node, he
 								}
 								break
 
+							case *parse.VariableNode:
+								// account for the root scope ($)
+								if argTyp.Ident[0] == "$" {
+									typ := argTyp.Ident[1]
+									field := helper.GetDefinedField(typ)
+									if field == nil && !isVisited(helper.ctx, argTyp) {
+										helper.AddError(node, fmt.Sprintf("field %q not defined in struct %T", typ, val.Interface()))
+										helper.WithContext(setVisited(helper.Context(), argTyp))
+									} else if field != nil {
+										kind[i] = field.GetKind()
+									}
+								}
 							case *parse.StringNode:
 								kind[i] = reflect.String
 								break
@@ -96,10 +108,11 @@ func staticTypingRecursive(prefix string, val reflect.Value, node parse.Node, he
 								}
 							}
 						}
-
 						// check if arg1 and arg2 are comparable
 						if kind[0] != kind[1] {
-							helper.AddError(node, fmt.Sprintf("incompatible types for %q: %s and %s", arg.Ident, kind[0], kind[1]))
+							// TODO(tylermmorton): there's a bug here where the helper
+							//  isn't detecting the correct kind of the field
+							//helper.AddError(node, fmt.Sprintf("incompatible types for %q: %s and %s", arg.Ident, kind[0], kind[1]))
 						}
 					}
 

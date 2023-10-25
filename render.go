@@ -1,6 +1,7 @@
 package tmpl
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"html/template"
@@ -8,7 +9,7 @@ import (
 )
 
 type RenderProcess struct {
-	Target   string
+	Targets  []string
 	Template *template.Template
 }
 
@@ -23,9 +24,9 @@ func WithName(name string) RenderOption {
 }
 
 // WithTarget sets the render Target to the given Template name.
-func WithTarget(target string) RenderOption {
+func WithTarget(target ...string) RenderOption {
 	return func(p *RenderProcess) {
-		p.Target = target
+		p.Targets = append(p.Targets, target...)
 	}
 }
 
@@ -62,12 +63,44 @@ func (tmpl *managedTemplate[T]) Render(wr io.Writer, data T, opts ...RenderOptio
 
 	p := &RenderProcess{
 		Template: t,
-		Target:   t.Tree.ParseName,
+		Targets:  []string{},
 	}
 
 	for _, opt := range opts {
 		opt(p)
 	}
 
-	return t.ExecuteTemplate(wr, p.Target, data)
+	// render the default template if no targets are provided.
+	if len(p.Targets) == 0 {
+		p.Targets = append(p.Targets, t.Tree.ParseName)
+	}
+
+	buf := bytes.Buffer{}
+	for _, target := range p.Targets {
+		if err := p.Template.ExecuteTemplate(&buf, target, data); err != nil {
+			return err
+		}
+	}
+
+	_, err = wr.Write(buf.Bytes())
+	return err
+}
+
+func (tmpl *managedTemplate[T]) RenderToChan(ch chan string, data T, opts ...RenderOption) error {
+	buf := bytes.Buffer{}
+	err := tmpl.Render(&buf, data, opts...)
+	if err != nil {
+		return err
+	}
+	ch <- buf.String()
+	return nil
+}
+
+func (tmpl *managedTemplate[T]) RenderToString(data T, opts ...RenderOption) (string, error) {
+	buf := bytes.Buffer{}
+	err := tmpl.Render(&buf, data, opts...)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
