@@ -44,7 +44,6 @@ type TemplateBinding struct {
 	FileName   string
 	FilePaths  []string
 	StructType string
-	UseWatcher bool
 }
 
 func (b *TemplateBinding) TemplateText() string {

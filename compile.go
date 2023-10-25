@@ -144,12 +144,6 @@ func Compile[T TemplateProvider](tp T, opts ...CompilerOption) (Template[T], err
 		return nil, err
 	}
 
-	// recursively spawn goroutines to watch for recompile signals
-	_ = recurseFieldsImplementing[TemplateWatcher](tp, func(w TemplateWatcher, field reflect.StructField) (err error) {
-		go w.Watch(doCompile)
-		return
-	})
-
 	return m, nil
 }
 
