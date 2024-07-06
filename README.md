@@ -181,61 +181,66 @@ You can also pass additional options to the render function to customize the beh
 type RenderOption func(p *RenderProcess)
 ```
 
+## Advanced Usage
+
 ### Template Functions
 
 `tmpl` supports multiple ways of providing functions to your templates. 
 
 #### Dot Context Methods
 
-You can define methods on your dot context struct to be used as template functions:
+You can define methods on your dot context struct to be used as template functions. These methods must be attached to your struct via pointer receiver. This strategy is useful if your template function depends on a lot of internal state.
 
 ```go
 type LoginPage struct {
-    ...
+    FirstName string
+	LastName  string
 }
 
-func (*LoginPage) Add(a, b int) int {
-    return a + b
+func (p *LoginPage) FullName() string {
+    return fmt.Sprintf("%s %s", p.FirstName, p.LastName)
 }
 ```
 
 ```html
-{{ .Add 1 2 }}
+{{ .FullName }}
 ```
 
-#### FuncMapProvider
+#### `FuncMapProvider`
 
-You can also define template functions on the dot context struct by implementing the `FuncMapProvider` interface:
+You can also define template functions on the dot context struct by implementing the `FuncMapProvider` interface. This is useful for reusing utility functions across multiple templates and packages.
 
 ```go
+package tmpl
+
 type FuncMapProvider interface {
-    FuncMap() template.FuncMap
+    TemplateFuncMap() FuncMap
 }
 ```
 
-Example:
+Example using the [sprig](https://github.com/Masterminds/sprig) library:
 ```go
+import (
+    "github.com/Masterminds/sprig/v3"
+)
+
 type LoginPage struct {
     ...
 }
 
-func (*LoginPage) FuncMap() template.FuncMap {
-    return template.FuncMap{
-        "add": func(a, b int) int {
-            return a + b
-        },
-    }
+func (*LoginPage) TemplateFuncMap() tmpl.FuncMap {
+    return sprig.FuncMap()
 }
 ```
 
 Usage:
 ```html
-{{ add 1 2 }}
+{{ "hello!" | upper | repeat 5 }}
 ```
 
-#### CompilerOption
+#### `CompilerOption`
 
-You can also provide template functions when compiling your template using the `tmpl.WithFuncs` option:
+You can also provide template functions while compiling your template using the `tmpl.WithFuncs` option:
 
 Example:
 ```go
