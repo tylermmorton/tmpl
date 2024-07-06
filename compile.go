@@ -59,7 +59,10 @@ func compile(tp TemplateProvider, opts ParseOptions, analyzers ...Analyzer) (*te
 	// this block is responsible for constructing the template that
 	// will be rendered by the user
 	err = recurseFieldsImplementing[TemplateProvider](tp, func(tp TemplateProvider, field reflect.StructField) error {
-		var templateText string
+		var (
+			funcMap      = make(FuncMap)
+			templateText string
+		)
 
 		templateName, ok := field.Tag.Lookup("tmpl")
 		if !ok {
@@ -75,7 +78,16 @@ func compile(tp TemplateProvider, opts ParseOptions, analyzers ...Analyzer) (*te
 			t = t.Delims(opts.LeftDelim, opts.RightDelim)
 
 			// Analyzers can provide functions to be used in templates
-			t = t.Funcs(helper.FuncMap())
+			for key, fn := range helper.FuncMap() {
+				funcMap[key] = fn
+			}
+
+			// FuncMapProvider can also be implemented and provide functions
+			if fmp, ok := tp.(FuncMapProvider); ok {
+				for key, fn := range fmp.TemplateFuncMap() {
+					funcMap[key] = fn
+				}
+			}
 		} else {
 			// if this is a nested template wrap its text in a {{ define }}
 			// statement, so it may be referenced by the "parent" template
@@ -83,7 +95,7 @@ func compile(tp TemplateProvider, opts ParseOptions, analyzers ...Analyzer) (*te
 			templateText = fmt.Sprintf("%[1]sdefine %[3]q -%[2]s\n%[4]s%[1]send%[2]s\n", opts.LeftDelim, opts.RightDelim, templateName, tp.TemplateText())
 		}
 
-		t, err = t.Parse(templateText)
+		t, err = t.Funcs(funcMap).Parse(templateText)
 		if err != nil {
 			return err
 		}
@@ -99,10 +111,6 @@ func compile(tp TemplateProvider, opts ParseOptions, analyzers ...Analyzer) (*te
 
 // Compile takes the given TemplateProvider, parses the templateProvider text and then
 // recursively compiles all nested templates into one managed Template instance.
-//
-// Compile also spawns a watcher routine. If the given TemplateProvider or any
-// nested templates within implement TemplateWatcher, they can send signals over
-// the given channel when it is time for the templateProvider to be recompiled.
 func Compile[T TemplateProvider](tp T, opts ...CompilerOption) (Template[T], error) {
 	var (
 		c = &CompilerOptions{
@@ -147,6 +155,8 @@ func Compile[T TemplateProvider](tp T, opts ...CompilerOption) (Template[T], err
 	return m, nil
 }
 
+// MustCompile is a helper function that wraps Compile and panics if the template
+// fails to compile.
 func MustCompile[T TemplateProvider](p T, opts ...CompilerOption) Template[T] {
 	tmpl, err := Compile(p, opts...)
 	if err != nil {

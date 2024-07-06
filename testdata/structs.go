@@ -162,6 +162,22 @@ func (*MultiLevelEmbeds) TemplateText() string {
 	return `{{ template "one" . }}`
 }
 
+type Child struct {
+	DefField string
+}
+
+func (*Child) TemplateText() string {
+	return `{{ .DefField }}`
+}
+
+type Parent struct {
+	N Child `tmpl:"nested"`
+}
+
+func (*Parent) TemplateText() string {
+	return `{{ template "nested" .N }}`
+}
+
 type NoPipeline struct {
 	LevelOneEmbed `tmpl:"one"`
 }

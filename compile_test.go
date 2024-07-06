@@ -29,6 +29,12 @@ func (*TestTemplate) TemplateText() string {
 	return testTemplateText
 }
 
+func (*TestTemplate) TemplateFuncMap() FuncMap {
+	return FuncMap{
+		"testFuncMap": func() string { return "testFunc result" },
+	}
+}
+
 // Test_Compile tests the compiler's ability to compile and render templates.
 // It's like a package level integration test at this point
 func Test_Compile(t *testing.T) {
@@ -54,6 +60,19 @@ func Test_Compile(t *testing.T) {
 		"Supports usage of {{ .Nested.Field }} pipeline statements": {
 			templateProvider:   &DefinedNestedField{Nested: DefinedField{DefField: "Hello World"}},
 			expectRenderOutput: []string{"Hello World"},
+		},
+		"Supports usage of FuncMapProvider to provide static template functions": {
+			templateProvider: &TestTemplate{
+				Title:   "FuncMapProvider",
+				Scripts: []ScriptComponent{},
+				Content: &TextComponent{Text: "Hello World"},
+			},
+			expectRenderOutput: []string{
+				"FuncMapProvider",
+				"<footer>",
+				"<div>testFunc result</div>",
+				"</footer>",
+			},
 		},
 		"Supports usage of {{ define }} and {{ template }} statements": {
 			templateProvider: &TestTemplate{
@@ -155,6 +174,14 @@ func Test_Compile(t *testing.T) {
 					LevelTwoEmbed: LevelTwoEmbed{
 						DefField: "Hello World",
 					},
+				},
+			},
+			expectRenderOutput: []string{"Hello World"},
+		},
+		"Supports nested TemplateProviders that are not embedded": {
+			templateProvider: &Parent{
+				N: Child{
+					DefField: "Hello World",
 				},
 			},
 			expectRenderOutput: []string{"Hello World"},
