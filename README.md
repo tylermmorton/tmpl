@@ -1,7 +1,5 @@
 # `tmpl`
 
-> ⚠️ `tmpl` is currently working towards its first release
-
 tmpl is a wrapper around Go's `html/template` package that aims to solve some of the pain points developers commonly run into while working with templates. This project attempts to improve the overall template workflow and offers a few helpful utilities for developers building html based applications:
 
 - Two-way type safety when referencing templates in Go code and visa versa
@@ -181,6 +179,78 @@ You can also pass additional options to the render function to customize the beh
 
 ```go
 type RenderOption func(p *RenderProcess)
+```
+
+### Template Functions
+
+`tmpl` supports multiple ways of providing functions to your templates. 
+
+#### Dot Context Methods
+
+You can define methods on your dot context struct to be used as template functions:
+
+```go
+type LoginPage struct {
+    ...
+}
+
+func (*LoginPage) Add(a, b int) int {
+    return a + b
+}
+```
+
+```html
+{{ .Add 1 2 }}
+```
+
+#### FuncMapProvider
+
+You can also define template functions on the dot context struct by implementing the `FuncMapProvider` interface:
+
+```go
+type FuncMapProvider interface {
+    FuncMap() template.FuncMap
+}
+```
+
+Example:
+```go
+type LoginPage struct {
+    ...
+}
+
+func (*LoginPage) FuncMap() template.FuncMap {
+    return template.FuncMap{
+        "add": func(a, b int) int {
+            return a + b
+        },
+    }
+}
+```
+
+Usage:
+```html
+{{ add 1 2 }}
+```
+
+#### CompilerOption
+
+You can also provide template functions when compiling your template using the `tmpl.WithFuncs` option:
+
+Example:
+```go
+var (
+    LoginTemplate = tmpl.MustCompile(&LoginPage{}, tmpl.WithFuncs(tmpl.FuncMap{
+        "add": func(a, b int) int {
+            return a + b
+        },
+    }))
+)
+```
+
+Usage:
+```html
+{{ add 1 2 }}
 ```
 
 ### Template Nesting
