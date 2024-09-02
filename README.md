@@ -6,7 +6,6 @@ tmpl is a wrapper around Go's `html/template` package that aims to solve some of
 - Nested templates and template fragments
 - Template extensibility through compiler plugins
 - Static analysis utilities such as template parse tree traversal
-- Convenient but optional CLI for binding templates to Go code
 
 *Roadmap & Idea List*
 
@@ -17,11 +16,6 @@ tmpl is a wrapper around Go's `html/template` package that aims to solve some of
 ##  🧰 Installation
 ```bash
 go get github.com/tylermmorton/tmpl
-```
-
-To install the `tmpl` cli and scaffolding utilities:
-```bash
-go install github.com/tylermmorton/tmpl/cmd/tmpl
 ```
 
 ## 🌊 The Workflow
@@ -86,39 +80,6 @@ var (
 type LoginPage struct { 
     ... 
 }
-
-func (*LoginPage) TemplateText() string {
-    return tmplLoginPage
-}
-```
-
-If you've opted into using the `tmpl` CLI, you can use the `//tmpl:bind` annotation on your dot context struct instead.
-
-```go
-//tmpl:bind login.tmpl.html
-type LoginPage struct {
-    ...
-}
-```
-
-and run the utility:
-```shell
-tmpl bind . --outfile=tmpl.gen.go
-```
-
-> Tip: Run `tmpl bind ./...` using a [`//go:generate` annotation](https://go.dev/blog/generate) at the root of your project to ensure all of your templates are bound at build time.
-
-`tmpl bind` works at the _package level_ and will generate a single file containing the binding code for all the structs annotated with `//tmpl:bind` in your package.
-
-```go
-import (
-    _ "embed"
-)
-
-var (
-    //go:embed login.tmpl.html
-    tmplLoginPage string
-)
 
 func (*LoginPage) TemplateText() string {
     return tmplLoginPage
@@ -194,7 +155,7 @@ You can define methods on your dot context struct to be used as template functio
 ```go
 type LoginPage struct {
     FirstName string
-	LastName  string
+    LastName  string
 }
 
 func (p *LoginPage) FullName() string {
