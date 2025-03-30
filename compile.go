@@ -83,6 +83,15 @@ func compile(tp TemplateProvider, opts ParseOptions, analyzers ...Analyzer) (*te
 			}
 
 			// FuncMapProvider can also be implemented and provide functions
+			err = recurseFieldsImplementing[FuncMapProvider](tp, func(val FuncMapProvider, field reflect.StructField) error {
+				for key, fn := range val.TemplateFuncMap() {
+					funcMap[key] = fn
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
 			if fmp, ok := tp.(FuncMapProvider); ok {
 				for key, fn := range fmp.TemplateFuncMap() {
 					funcMap[key] = fn
