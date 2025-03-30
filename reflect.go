@@ -193,11 +193,27 @@ func recurseFieldsImplementing[T interface{}](structOrPtr interface{}, fn func(v
 			if err != nil {
 				return err
 			}
+		}
 
-			err = recurseFieldsImplementing[T](t, fn)
-			if err != nil {
-				return err
+		if field.Kind() == reflect.Slice {
+			// Get the underlying type of this slice
+			underlyingType := field.Type().Elem()
+			if underlyingType.Kind() != reflect.Ptr &&
+				underlyingType.Kind() != reflect.Struct {
+				continue
 			}
+
+			iface = zeroValueInterfaceFromField(field)
+		} else if field.Kind() != reflect.Struct {
+			// If this is not a struct or pointer, we can't recurse
+			continue
+		}
+
+		// Even if this field is not the interface we're looking for, its
+		// child fields might be... So recurse on
+		err := recurseFieldsImplementing[T](iface, fn)
+		if err != nil {
+			return err
 		}
 	}
 

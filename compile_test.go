@@ -3,14 +3,14 @@ package tmpl
 import (
 	"bytes"
 	_ "embed"
+	"html/template"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	. "github.com/tylermmorton/tmpl/testdata"
 )
 
-// TODO: replace tests with table driven tests
-// @deprecated
 type TestTemplate struct {
 	// Name tests fields who do not implement TemplateProvider
 	Name string
@@ -309,4 +309,38 @@ func Test_Compile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCompile_DeeplyNestedTemplateProviders(t *testing.T) {
+	templateProvider := &DeeplyNestedTemplateProvider{
+		Nested: NestedTemplateProvider{
+			Text: TextComponent{Text: template.HTML("Hello World")},
+		},
+	}
+
+	tmpl, err := Compile(templateProvider)
+	require.NoError(t, err)
+
+	buf := bytes.Buffer{}
+	err = tmpl.Render(&buf, templateProvider)
+	require.NoError(t, err)
+
+	require.Equal(t, "Hello World", buf.String())
+}
+
+func TestCompile_DeeplyNestedTemplateProviderSlice(t *testing.T) {
+	templateProvider := &DeeplyNestedTemplateProviderSlice{
+		Nested: []NestedTemplateProvider{{
+			Text: TextComponent{Text: template.HTML("Hello World")},
+		}},
+	}
+
+	tmpl, err := Compile(templateProvider)
+	require.NoError(t, err)
+
+	buf := bytes.Buffer{}
+	err = tmpl.Render(&buf, templateProvider)
+	require.NoError(t, err)
+
+	require.Equal(t, "Hello World", buf.String())
 }

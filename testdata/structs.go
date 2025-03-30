@@ -1,15 +1,36 @@
 package testdata
 
-type TextComponent struct {
-	Text string
-}
+import "html/template"
 
-func (t *TextComponent) String() string {
-	return t.Text
+type TextComponent struct {
+	Text template.HTML
 }
 
 func (*TextComponent) TemplateText() string {
-	return "{{.}}"
+	return "{{.Text}}"
+}
+
+// NestedTemplateProvider does not implement TemplateProvider but has child fields that do.
+type NestedTemplateProvider struct {
+	Text TextComponent `tmpl:"text"`
+}
+
+// DeeplyNestedTemplateProvider is a TemplateProvider that references a template provided by
+// a type that is deeply nested within a struct field.
+type DeeplyNestedTemplateProvider struct {
+	Nested NestedTemplateProvider
+}
+
+func (*DeeplyNestedTemplateProvider) TemplateText() string {
+	return `{{ template "text" .Nested.Text }}`
+}
+
+type DeeplyNestedTemplateProviderSlice struct {
+	Nested []NestedTemplateProvider
+}
+
+func (*DeeplyNestedTemplateProviderSlice) TemplateText() string {
+	return `{{range .Nested}}{{ template "text" .Text }}{{end}}`
 }
 
 type ScriptComponent struct {
