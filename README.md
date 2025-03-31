@@ -1,8 +1,10 @@
 # `tmpl`
 
-tmpl is a wrapper around Go's `html/template` package that aims to solve some of the pain points developers commonly run into while working with templates. This project attempts to improve the overall template workflow and offers a few helpful utilities for developers building html based applications:
+`tmpl` is a developer-friendly wrapper around Go's `html/template` package, designed to simplify common tasks, enhance type safety, and make complex template setups more maintainable and readable. If you've ever felt frustration dealing with loosely-coupled templates and Go code, `tmpl` was built specifically for you.
 
-- Two-way type safety when referencing templates in Go code and visa versa
+This project attempts to improve the overall template workflow and offers a few helpful utilities for developers building html based applications:
+
+- Two-way type safety when referencing templates in Go code and vice-versa
 - Nested templates and template fragments
 - Template extensibility through compiler plugins
 - Static analysis utilities such as template parse tree traversal
@@ -59,6 +61,7 @@ type LoginPage struct {
 ### `TemplateProvider`
 
 To turn your dot context struct into a target for the tmpl compiler, your struct type must implement the `TemplateProvider` interface:
+
 ```go
 type TemplateProvider interface {
     TemplateText() string
@@ -136,14 +139,6 @@ func main() {
 }
 ```
 
-You can also pass additional options to the render function to customize the behavior of the template.
-
-```go
-type RenderOption func(p *RenderProcess)
-```
-
-## Advanced Usage
-
 ### Template Functions
 
 `tmpl` supports multiple ways of providing functions to your templates. 
@@ -199,26 +194,6 @@ Usage:
 {{ "hello!" | upper | repeat 5 }}
 ```
 
-#### `CompilerOption`
-
-You can also provide template functions while compiling your template using the `tmpl.WithFuncs` option:
-
-Example:
-```go
-var (
-    LoginTemplate = tmpl.MustCompile(&LoginPage{}, tmpl.WithFuncs(tmpl.FuncMap{
-        "add": func(a, b int) int {
-            return a + b
-        },
-    }))
-)
-```
-
-Usage:
-```html
-{{ add 1 2 }}
-```
-
 ### Template Nesting
 
 One major advantage of using structs to bind templates is that nesting templates is as easy as nesting structs. 
@@ -238,10 +213,7 @@ A good use case for nesting templates is to abstract the document `<head>` of th
 </head>
 ```
 
-Again, annotate your dot context struct and run `tmpl bind`:
-
 ```go
-//tmpl:bind head.tmpl.html
 type Head struct {
     Title   string
     Scripts []string
@@ -253,7 +225,6 @@ Now, update the `LoginPage` struct to embed the new `Head` template.
 The name of the template is defined using the `tmpl` struct tag. If the tag is not present the field name is used instead.
 
 ```go
-//tmpl:bind login.tmpl.html
 type LoginPage struct {
     Head `tmpl:"head"`
 	
@@ -261,7 +232,9 @@ type LoginPage struct {
     Password string
 }
 ```
+
 Embedded templates can be referenced using the built in `{{ template }}` directive. Use the name assigned in the struct tag and ensure to pass the dot context value.
+
 ```html
 <!DOCTYPE html>
 <html lang="en">
@@ -273,6 +246,7 @@ Embedded templates can be referenced using the built in `{{ template }}` directi
 ```
 
 Finally, update references to `LoginPage` to include the nested template's dot as well.
+
 ```go
 var (
     LoginTemplate = tmpl.MustCompile(&LoginPage{})
@@ -311,5 +285,60 @@ func main() {
     if err != nil {
         panic(err)
     }
+}
+```
+
+## Advanced Usage
+
+### Template Analysis
+
+The `tmpl` package provides a static analysis tool for Go templates. This tool can be used to traverse the parse tree of a template and perform custom analysis. The analysis framework is what enables the `tmpl` compiler to perform static analysis on your templates and provide type safety.
+
+
+### `Analyzer`
+
+An `Analyzer` is a function that returns an `AnalyzerFunc`, which is a visitor-style function that allows you to traverse the parse tree of a template. `Analyzer`s can be provided to `tmpl.Compile` using the `UseAnalyzers` option.
+
+In the following example, we search templates for instances of `{{ outlet }}` and dynamically inject a function. This is how the `torque` framework uses the `tmpl` compiler to provide handler wrapping functionality. [Example](https://github.com/tylermmorton/torque/blob/master/template.go)
+
+You may want to do something similar if you want to add new 'built in' directives and functions to your templates.
+
+```go
+package main
+
+var outletAnalyzer tmpl.Analyzer  = func(h *tmpl.AnalysisHelper) tmpl.AnalyzerFunc {
+	return tmpl.AnalyzerFunc(func(val reflect.Value, node parse.Node) {
+		switch node := node.(type) {
+		case *parse.IdentifierNode:
+			if node.Ident == "outlet" {
+				h.AddFunc("outlet", func() string { return "{{ . }}" })
+			}
+		}
+	})
+}
+
+var LoginPage = tmpl.MustCompile(&LoginPage{}, tmpl.UseAnalyzers(outletAnalyzer))
+```
+
+### `AnalysisHelper`
+
+The `AnalysisHelper` allows you to modify the template during analysis. It provides methods to add functions, variables, and other nodes to the template. This is useful for modifying the template during analysis without having to modify the original template.
+
+### `Analyze`
+
+The `Analyze` function can be used independently of the `Compile` function and allows you to analyze templates without compiling them. This is useful for static analysis and debugging purposes.
+
+```go
+package main
+
+import (
+    "fmt"
+    "html/template"
+	
+    "github.com/tylermmorton/tmpl"
+)
+
+func main() {
+    tmpl.Analyze(&LoginPage{}, tmpl.ParseOptions{}, []tmpl.Analyzer{ ... })
 }
 ```
